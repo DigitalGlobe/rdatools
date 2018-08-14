@@ -53,8 +53,12 @@ type Metadata struct {
 }
 
 func main() {
-	graphID := "be3380f89ac8d4a5eef4d78549f183284d61f0fccbdfed6c17a1c36ac6b38d92"
-	nodeID := "FormatByte"
+	graphID := "2266e5a362b71333c95d59ecd25f6bac1d8954779f9bd1629b904f8a542a88cd"
+	nodeID := "BandSelect-RGB"
+	//graphID := "be3380f89ac8d4a5eef4d78549f183284d61f0fccbdfed6c17a1c36ac6b38d92"
+	//nodeID := "FormatByte"
+
+	log.SetFlags(log.Lshortfile)
 
 	// Get GBDX creds.
 	usr, err := user.Current()
@@ -87,53 +91,30 @@ func main() {
 	md := Metadata{}
 	json.NewDecoder(res.Body).Decode(&md)
 
-	md.ImageMetadata.DataType = "Byte"
-	md.ImageMetadata.NumXTiles = 8
-	md.ImageMetadata.NumYTiles = 8
+	//md.ImageMetadata.NumXTiles = 10
+	//md.ImageMetadata.NumYTiles = 10
+	fmt.Println(md.ImageMetadata.NumXTiles, md.ImageMetadata.NumYTiles)
 
 	// Download tiles.
-	tileMap := make(map[string]string)
-	for x := md.ImageMetadata.MinTileX; x < md.ImageMetadata.NumXTiles; x++ {
-		for y := md.ImageMetadata.MinTileY; y < md.ImageMetadata.NumYTiles; y++ {
-			//tileURL := fmt.Sprintf("https://rda.geobigdata.io/v1/tile/%s/%s/%d/%d.tif", graphID, nodeID, x, y)
-			//req, err := http.NewRequest("GET", tileURL, nil)
-			//if err != nil {
-			//	log.Fatal("failed building tile request")
-			//}
-			//req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", conf.Token.AccessToken))
-			//res, err := client.Do(req)
-			//if err != nil {
-			//	log.Fatal("failed requesting tile\n", err)
-			//}
-			//defer res.Body.Close()
-			//
-			//if res.StatusCode != http.StatusOK {
-			//	log.Fatalf("failed to get tile from %s, got code %v %v", tileURL, res.StatusCode, res.Status)
-			//}
-			//
-			//// Write it.
-			fPath := fmt.Sprintf("tmp/tile_%d_%d.tif", x, y)
-			//f, err := os.Create(fPath)
-			//if err != nil {
-			//	log.Fatal("failed opening file on disk")
-			//}
-			//defer f.Close()
-			//
-			//if _, err := io.Copy(f, res.Body); err != nil {
-			//	log.Fatal("failed copying tile to disk")
-			//}
-			//
-			tileMap[fmt.Sprintf("%d/%d", x, y)] = fPath
-		}
+	r, err := NewRetriever(graphID, nodeID, md, "tmpPS", conf.Token)
+	if err != nil {
+		log.Fatal(err)
 	}
 
+	ts := time.Now()
+	tileMap := r.Retrieve()
+	elapsed := time.Since(ts)
+	log.Printf("Tile retrieval took %s", elapsed)
+
 	// Build VRT.
+	log.Println(len(tileMap))
 	vrt, err := NewVRT(&md, tileMap)
 	if err != nil {
+
 		log.Fatal("failed building vrt")
 	}
 
-	f, err := os.Create("rda.vrt")
+	f, err := os.Create("rdaPS.vrt")
 	if err != nil {
 		log.Fatal("failure creating VRT file")
 	}

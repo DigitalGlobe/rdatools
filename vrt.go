@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/xml"
 	"fmt"
+	"strings"
 )
 
 type VRTDataset struct {
@@ -16,9 +17,7 @@ type VRTDataset struct {
 
 type GeoTransform [6]float64
 
-// <VRTRasterBand dataType="Byte" band="1">
 type VRTRasterBand struct {
-	//XMLName  xml.Name `xml:"VRTRasterBand"`
 	DataType     string `xml:"dataType,attr"`
 	Band         int    `xml:"band,attr,omitempty"`
 	SimpleSource []SimpleSource
@@ -66,32 +65,51 @@ func (g GeoTransform) MarshalText() (text []byte, err error) {
 	return []byte(fmt.Sprintf("%.16e, %.16e, %.16e, %.16e, %.16e, %.16e", g[0], g[1], g[2], g[3], g[4], g[5])), nil
 }
 
+func RDAToGDALType(rda string) (string, error) {
+	switch s := strings.ToLower(rda); s {
+	case "byte":
+		return "Byte", nil
+	case "short":
+		return "Int16", nil
+	case "unsigned_short":
+		return "UInt16", nil
+	case "integer":
+		return "Int32", nil
+	case "unsigned_integer":
+		return "UInt32", nil
+	case "float":
+		return "Float32", nil
+	case "double":
+		return "Float64", nil
+	}
+	return "", fmt.Errorf("RDA type %q has no mapping to a GDAL type", rda)
+}
+
 func NewVRT(m *Metadata, tileMap map[string]string) (*VRTDataset, error) {
 
-	gt := [6]float64{
-		m.ImageGeoreferencing.TranslateX,
-		m.ImageGeoreferencing.ScaleX,
-		m.ImageGeoreferencing.ShearX,
-		m.ImageGeoreferencing.TranslateY,
-		m.ImageGeoreferencing.ShearY,
-		m.ImageGeoreferencing.ScaleY,
+	GDALType, err := RDAToGDALType(m.ImageMetadata.DataType)
+	if err != nil {
+		return nil, err
 	}
 
-	newGT := gt
-	//newGT[0] = gt[0] + gt[1]*float64(m.ImageMetadata.MinX) + gt[2]*float64(m.ImageMetadata.MinY)
-	//newGT[3] = gt[3] + gt[4]*float64(m.ImageMetadata.MinX) + gt[5]*float64(m.ImageMetadata.MinY)
-
 	vrt := VRTDataset{
-		RasterXSize:  m.ImageMetadata.TileXSize * m.ImageMetadata.NumXTiles,
-		RasterYSize:  m.ImageMetadata.TileYSize * m.ImageMetadata.NumYTiles,
-		SRS:          m.ImageGeoreferencing.SpatialReferenceSystemCode,
-		GeoTransform: newGT,
-		Bands:        make([]VRTRasterBand, 0, m.ImageMetadata.NumBands),
+		RasterXSize: m.ImageMetadata.TileXSize * m.ImageMetadata.NumXTiles,
+		RasterYSize: m.ImageMetadata.TileYSize * m.ImageMetadata.NumYTiles,
+		SRS:         m.ImageGeoreferencing.SpatialReferenceSystemCode,
+		GeoTransform: [6]float64{
+			m.ImageGeoreferencing.TranslateX,
+			m.ImageGeoreferencing.ScaleX,
+			m.ImageGeoreferencing.ShearX,
+			m.ImageGeoreferencing.TranslateY,
+			m.ImageGeoreferencing.ShearY,
+			m.ImageGeoreferencing.ScaleY,
+		},
+		Bands: make([]VRTRasterBand, 0, m.ImageMetadata.NumBands),
 	}
 
 	for b := 0; b < m.ImageMetadata.NumBands; b++ {
 		band := VRTRasterBand{
-			DataType: m.ImageMetadata.DataType,
+			DataType: GDALType,
 			Band:     b + 1,
 		}
 		for x := m.ImageMetadata.MinTileX; x < m.ImageMetadata.NumXTiles; x++ {
@@ -102,7 +120,7 @@ func NewVRT(m *Metadata, tileMap map[string]string) (*VRTDataset, error) {
 					SourceProperties: SourceProperties{
 						BlockXSize:  m.ImageMetadata.TileXSize,
 						BlockYSize:  m.ImageMetadata.TileYSize,
-						DataType:    m.ImageMetadata.DataType,
+						DataType:    GDALType,
 						RasterXSize: m.ImageMetadata.TileXSize,
 						RasterYSize: m.ImageMetadata.TileYSize,
 					},
@@ -126,5 +144,4 @@ func NewVRT(m *Metadata, tileMap map[string]string) (*VRTDataset, error) {
 	}
 
 	return &vrt, nil
-
 }
