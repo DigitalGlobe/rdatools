@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
 	"os/user"
 	"path/filepath"
 
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 
 	"github.com/BurntSushi/toml"
@@ -53,10 +51,13 @@ type Metadata struct {
 }
 
 func main() {
-	graphID := "2266e5a362b71333c95d59ecd25f6bac1d8954779f9bd1629b904f8a542a88cd"
-	nodeID := "BandSelect-RGB"
+
+	// graphID := "2266e5a362b71333c95d59ecd25f6bac1d8954779f9bd1629b904f8a542a88cd"
+	// nodeID := "BandSelect-RGB"
 	//graphID := "be3380f89ac8d4a5eef4d78549f183284d61f0fccbdfed6c17a1c36ac6b38d92"
 	//nodeID := "FormatByte"
+	graphID := "d51ac576f2938fdbd09047f5b2d1fe0fbf7da345846b2861c4dc72038a15bb36"
+	nodeID := "SmartBandSelect_blmsvy"
 
 	log.SetFlags(log.Lshortfile)
 
@@ -91,38 +92,35 @@ func main() {
 	md := Metadata{}
 	json.NewDecoder(res.Body).Decode(&md)
 
-	//md.ImageMetadata.NumXTiles = 10
-	//md.ImageMetadata.NumYTiles = 10
-	fmt.Println(md.ImageMetadata.NumXTiles, md.ImageMetadata.NumYTiles)
+	fmt.Print(md)
 
-	// Download tiles.
-	r, err := NewRetriever(graphID, nodeID, md, "tmpPS", conf.Token)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// // Download tiles.
+	// r, err := NewRetriever(graphID, nodeID, md, "tmpPS", conf.Token)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	ts := time.Now()
-	tileMap := r.Retrieve()
-	elapsed := time.Since(ts)
-	log.Printf("Tile retrieval took %s", elapsed)
+	// ts := time.Now()
+	// tileMap := r.Retrieve()
+	// elapsed := time.Since(ts)
+	// log.Printf("Tile retrieval took %s", elapsed)
 
-	// Build VRT.
-	log.Println(len(tileMap))
-	vrt, err := NewVRT(&md, tileMap)
-	if err != nil {
+	// // Build VRT.
+	// log.Println(len(tileMap))
+	// vrt, err := NewVRT(&md, tileMap)
+	// if err != nil {
+	// 	log.Fatal("failed building vrt")
+	// }
 
-		log.Fatal("failed building vrt")
-	}
+	// f, err := os.Create("rdaPS.vrt")
+	// if err != nil {
+	// 	log.Fatal("failure creating VRT file")
+	// }
+	// defer f.Close()
 
-	f, err := os.Create("rdaPS.vrt")
-	if err != nil {
-		log.Fatal("failure creating VRT file")
-	}
-	defer f.Close()
-
-	enc := xml.NewEncoder(f)
-	enc.Indent("  ", "    ")
-	if err := enc.Encode(vrt); err != nil {
-		fmt.Printf("error: %v\n", err)
-	}
+	// enc := xml.NewEncoder(f)
+	// enc.Indent("  ", "    ")
+	// if err := enc.Encode(vrt); err != nil {
+	// 	fmt.Printf("error: %v\n", err)
+	// }
 }
