@@ -7,17 +7,17 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
-	"time"
 
 	"os"
 
 	"path/filepath"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"golang.org/x/oauth2"
 )
 
 type Retriever struct {
-	client      *http.Client
+	client      *retryablehttp.Client
 	token       *oauth2.Token
 	numParallel int
 
@@ -29,9 +29,7 @@ type Retriever struct {
 
 func NewRetriever(graphID, nodeID string, metadata Metadata, outDir string, gbdxToken *oauth2.Token) (*Retriever, error) {
 	r := &Retriever{
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		client:   retryablehttp.NewClient(),
 		token:    gbdxToken,
 		metadata: metadata,
 		tileURL:  fmt.Sprintf("https://rda.geobigdata.io/v1/tile/%s/%s/%%d/%%d.tif", graphID, nodeID),
@@ -63,7 +61,8 @@ func (r *Retriever) Retrieve() map[string]string {
 			for job := range jobChan {
 
 				func() {
-					req, err := http.NewRequest("GET", job.url, nil)
+					return
+					req, err := retryablehttp.NewRequest("GET", job.url, nil)
 					if err != nil {
 						log.Fatal("failed building tile request")
 					}
