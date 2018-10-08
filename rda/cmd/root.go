@@ -39,7 +39,14 @@ var rootCmd = &cobra.Command{
 	//Long: `A longer description.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	//	Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		var config Config
+		viper.UnmarshalKey(viper.GetString("profile"), &config)
+
+		fmt.Printf("\n\nconfig at %s is:\n\n%+v\n\n", viper.ConfigFileUsed(), config)
+
+		viper.Debug()
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -52,9 +59,10 @@ func Execute() {
 }
 
 func init() {
-	// --profile flag is persistent across subcommands.
 	rootCmd.PersistentFlags().String("profile", "default", "RDA profile to use")
 	viper.BindPFlag("profile", rootCmd.PersistentFlags().Lookup("profile"))
+
+	viper.BindEnv("gbdx_username", "GBDX_USERNAME")
 
 	cobra.OnInitialize(initConfig)
 }
@@ -64,25 +72,37 @@ func initConfig() {
 	// We map a user defined profile from the cli to the active profile.
 	viper.RegisterAlias("ActiveConfig", viper.GetString("profile"))
 
-	// Ensure $HOME/.rda is created.  We write config as well as store persistent goods here, so it must exist.
-	rdaPath, err := ensureRDADir()
+	// RDA home directory where the config file would be located.
+	rdaPath, err := rdaDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed ensuring existence of %s directory\n", rdaPath)
+		fmt.Fprintf(os.Stderr, "Failed getting path of rda directory, err: %+v\n", err)
 		os.Exit(1)
 	}
 
 	// Where to find the configuration file.
 	viper.SetConfigName("credentials") // name of rda config file (without extension)
 	viper.AddConfigPath(rdaPath)       // adding rda directory as first search path
-	viper.ReadInConfig()
+	if err := viper.ReadInConfig(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
 
-// ensureRDADir will create the RDA directory if it doesn't already exist.
-func ensureRDADir() (string, error) {
+// rdaDir returns the location of where we store the RDA configuration directory.
+func rdaDir() (string, error) {
 	home, err := homedir.Dir()
 	if err != nil {
 		return "", err
 	}
 	rdaPath := path.Join(home, ".rda")
+	return rdaPath, nil
+}
+
+// ensureRDADir will create the RDA directory if it doesn't already exist.
+func ensureRDADir() (string, error) {
+	rdaPath, err := rdaDir()
+	if err != nil {
+		return "", err
+	}
 	return rdaPath, os.MkdirAll(rdaPath, 0600)
 }
