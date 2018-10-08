@@ -22,54 +22,79 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path"
-	"runtime"
 
 	"github.com/spf13/cobra"
 )
 
-// ensureRDADir will create the RDA directory if it doesn't already exist.
-func ensureRDADir() (string, error) {
-	rdaPath := path.Join(userHomeDir(), ".rda")
-	err := os.MkdirAll(rdaPath, 0600)
-	return rdaPath, err
-}
+type secretString string
 
-// userHomeDir returns the home directory of the user in a cross
-// platform way.  I've borrowed this from
-// https://github.com/spf13/viper/blob/master/util.go .
-func userHomeDir() string {
-	if runtime.GOOS == "windows" {
-		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
-		if home == "" {
-			home = os.Getenv("USERPROFILE")
+// String returns secretString types as a string with hidden entries.
+func (s secretString) String() (str string) {
+	for i, c := range s {
+		if i > 3 && len(s)-i < 5 {
+			str += string(c)
+		} else {
+			str += "*"
 		}
-		return home
 	}
-	return os.Getenv("HOME")
+	return
 }
 
 // configureCmd represents the configure command
 var configureCmd = &cobra.Command{
 	Use:   "configure",
-	Short: "Configure RDA access.",
-	// Long: `.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("configure called")
+	Short: "Configure RDA access, e.g. store your creds in ~/.rda.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Load the existing config, if there is one.
+		config, err := NewConfig()
+		if err != nil {
+			return fmt.Errorf("failure fetching a configuration, err: %v", err)
+		}
+
+		// Get the configuration from the user via the command line.
+		var configVars = []struct {
+			prompt   string
+			val      *string
+			isSecret bool
+		}{
+			{"GBDX User Name", &config.Username, false},
+			{"GBDX Password", &config.Password, true},
+		}
+		for _, configVar := range configVars {
+			// Pretty print the prompt for this variable.
+			fmt.Printf(configVar.prompt)
+			if val := *configVar.val; len(val) > 0 {
+				if configVar.isSecret {
+					fmt.Printf(" [%s]", secretString(val[max(0, len(val)-10):]))
+				} else {
+					fmt.Printf(" [%s]", val)
+				}
+			}
+			fmt.Printf(": ")
+
+			// Get user input for this value.
+			var s string
+			if n, err := fmt.Scanln(&s); err != nil && n > 0 {
+				// Gobble up remaining tokens if any.
+				for n, err := fmt.Scanln(&s); err != nil && n > 0; {
+				}
+				return fmt.Errorf("your input is bogus: %v", err)
+			}
+			if len(s) > 0 {
+				*configVar.val = s
+			}
+		}
+		return nil
 	},
+}
+
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
 }
 
 func init() {
 	rootCmd.AddCommand(configureCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// configureCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// configureCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

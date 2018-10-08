@@ -28,16 +28,20 @@ var metadataCmd = &cobra.Command{
 	Short: "return the metadata for the provided graph and node",
 	Long:  `rda metadata <graph-id> <node-id>`,
 	Args:  cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		graphID, nodeID := args[0], args[1]
 
-		config := NewConfig()
+		config, err := NewConfig()
+		if err != nil {
+			return err
+		}
 
 		md := Metadata(graphID, nodeID, config)
 
 		if err := json.NewEncoder(os.Stdout).Encode(md); err != nil {
 			log.Fatalf("failed streaming response, err: %+v", err)
 		}
+		return nil
 	},
 }
 
