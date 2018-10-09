@@ -30,22 +30,26 @@ import (
 	"github.com/spf13/viper"
 )
 
-//var cfgFile string
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "rda",
-	Short: "A CLI for accessing RDA functionality",
-	//Long: `A longer description.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	Run: func(cmd *cobra.Command, args []string) {
-		var config Config
-		viper.UnmarshalKey(viper.GetString("profile"), &config)
+	Use: "rda",
+	Long: `A CLI for accessing RDA functionality.
 
-		fmt.Printf("\n\nconfig at %s is:\n\n%+v\n\n", viper.ConfigFileUsed(), config)
+rda can be configured using the 'rda configure' command to store your
+GBDX credentials, or by setting the environment variables
+'GBDX_USERNAME' and 'GBDX_PASSWORD'.  If you use 'rda configure', you
+won't need to bother with your credentials again, as rda handles token
+refresh and caching for you.
 
+rda authorization supports "profiles" if you have more than one set of
+credentials.  By default, "default" is used if you don't specify a
+particual profile via the --profile flag.
+`,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.Debug()
+		c, err := NewConfig()
+		fmt.Printf("%+v\n", c)
+		return err
 	},
 }
 
@@ -62,7 +66,8 @@ func init() {
 	rootCmd.PersistentFlags().String("profile", "default", "RDA profile to use")
 	viper.BindPFlag("profile", rootCmd.PersistentFlags().Lookup("profile"))
 
-	viper.BindEnv("gbdx_username", "GBDX_USERNAME")
+	viper.BindEnv("gbdx_username")
+	viper.BindEnv("gbdx_password")
 
 	cobra.OnInitialize(initConfig)
 }
@@ -79,13 +84,10 @@ func initConfig() {
 		os.Exit(1)
 	}
 
-	// Where to find the configuration file.
+	// Where to find the configuration file, if it exists.
 	viper.SetConfigName("credentials") // name of rda config file (without extension)
 	viper.AddConfigPath(rdaPath)       // adding rda directory as first search path
-	if err := viper.ReadInConfig(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	viper.ReadInConfig()
 }
 
 // rdaDir returns the location of where we store the RDA configuration directory.

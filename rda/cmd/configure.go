@@ -46,12 +46,12 @@ var configureCmd = &cobra.Command{
 	Short: "Configure RDA access, e.g. store your creds in ~/.rda.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Load the existing config, if there is one.
-		config, err := NewConfig()
+		config, err := NewConfigFromRDADir()
 		if err != nil {
-			return fmt.Errorf("failure fetching a configuration, err: %v", err)
+			return err
 		}
 
-		// Get the configuration from the user via the command line.
+		// Get the configuration overrides from the user via the command line.
 		var configVars = []struct {
 			prompt   string
 			val      *string
