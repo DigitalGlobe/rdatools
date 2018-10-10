@@ -27,7 +27,7 @@ var realizeCmd = &cobra.Command{
 			shortGraphID = shortGraphID[0:10]
 		}
 
-		config, err := NewConfig()
+		config, err := newConfig()
 		if err != nil {
 			return err
 		}

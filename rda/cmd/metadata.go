@@ -31,7 +31,7 @@ var metadataCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		graphID, nodeID := args[0], args[1]
 
-		config, err := NewConfig()
+		config, err := newConfig()
 		if err != nil {
 			return err
 		}

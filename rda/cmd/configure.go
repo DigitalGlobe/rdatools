@@ -21,23 +21,25 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path"
 
+	"path/filepath"
+
+	"github.com/BurntSushi/toml"
+	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"golang.org/x/oauth2"
 )
 
-type secretString string
-
-// String returns secretString types as a string with hidden entries.
-func (s secretString) String() (str string) {
-	for i, c := range s {
-		if i > 3 && len(s)-i < 5 {
-			str += string(c)
-		} else {
-			str += "*"
-		}
-	}
-	return
+// Config holds the authorization info needed to access RDA.
+type Config struct {
+	Username string        `mapstructure:"gbdx_username" toml:"gbdx_username"`
+	Password string        `mapstructure:"gbdx_password" toml:"gbdx_password"`
+	Token    *oauth2.Token `mapstructure:"gbdx_token" toml:"gbdx_token,omitempty"`
 }
 
 // configureCmd represents the configure command
@@ -46,7 +48,7 @@ var configureCmd = &cobra.Command{
 	Short: "Configure RDA access, e.g. store your creds in ~/.rda.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Load the existing config, if there is one.
-		config, err := NewConfigFromRDADir()
+		config, err := newConfigFromRDADir()
 		if err != nil {
 			return err
 		}
@@ -84,8 +86,107 @@ var configureCmd = &cobra.Command{
 				*configVar.val = s
 			}
 		}
-		return nil
+		return writeConfig(&config)
 	},
+}
+
+// newConfig returns a Config configured by pulling in credentials via
+// viper, overriding GBDX username and passwords if they were given on
+// the command line.
+func newConfig() (Config, error) {
+	var config Config
+	if err := viper.UnmarshalKey(viper.GetString("profile"), &config); err != nil {
+		return Config{}, err
+	}
+	if viper.IsSet("gbdx_username") && viper.IsSet("gbdx_password") {
+		config.Username = viper.GetString("gbdx_username")
+		config.Password = viper.GetString("gbdx_password")
+		config.Token = nil
+	}
+
+	// We expect these to have been set at this point, otherwise the config will be unusable.
+	if config.Username == "" {
+		return Config{}, errors.New("no username found to use for authorization")
+	}
+	if config.Password == "" {
+		return Config{}, errors.New("no password found to use for authorization")
+	}
+
+	return config, nil
+}
+
+// newConfigFromRDADir returns a Config configured by pulling in credentials from the configuration file.
+func newConfigFromRDADir() (Config, error) {
+	var config Config
+	if err := viper.UnmarshalKey(viper.GetString("profile"), &config); err != nil {
+		return Config{}, err
+	}
+	return config, nil
+}
+
+// cacheToken updates an existing configuration file with the
+// provided one.  Note that we only update the profile as stored in
+// viper.
+func writeConfig(config *Config) error {
+	// Need the RDA dir around to write the config to.
+	rdaDir, err := ensureRDADir()
+	if err != nil {
+		return err
+	}
+
+	// Read in configuration file if it exists.  Note this may contain multiple profiles.
+	profilesOut := make(map[string]Config)
+	confFile := viper.ConfigFileUsed()
+	if confFile == "" {
+		confFile = filepath.Join(rdaDir, configName+".toml")
+	}
+
+	_, err = toml.DecodeFile(confFile, &profilesOut)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to parse the configurtion file: %v", err)
+	}
+
+	// Update this profile and write it to the credentials file.
+	profilesOut[viper.GetString("profile")] = *config
+	file, err := os.Create(confFile)
+	if err != nil {
+		return fmt.Errorf("failed to write updated configuration to disk: %v", err)
+	}
+	defer file.Close()
+	return toml.NewEncoder(file).Encode(profilesOut)
+}
+
+// rdaDir returns the location of where we store the RDA configuration directory.
+func rdaDir() (string, error) {
+	home, err := homedir.Dir()
+	if err != nil {
+		return "", err
+	}
+	rdaPath := path.Join(home, ".rda")
+	return rdaPath, nil
+}
+
+// ensureRDADir will create the RDA directory if it doesn't already exist.
+func ensureRDADir() (string, error) {
+	rdaPath, err := rdaDir()
+	if err != nil {
+		return "", err
+	}
+	return rdaPath, os.MkdirAll(rdaPath, 0700)
+}
+
+type secretString string
+
+// String returns secretString types as a string with hidden entries.
+func (s secretString) String() (str string) {
+	for i, c := range s {
+		if i > 3 && len(s)-i < 5 {
+			str += string(c)
+		} else {
+			str += "*"
+		}
+	}
+	return
 }
 
 func max(x, y int) int {

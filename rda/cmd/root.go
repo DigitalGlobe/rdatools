@@ -23,12 +23,12 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path"
 
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+const configName = "credentials"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -47,7 +47,7 @@ particual profile via the --profile flag.
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.Debug()
-		c, err := NewConfig()
+		c, err := newConfig()
 		fmt.Printf("%+v\n", c)
 		return err
 	},
@@ -85,26 +85,7 @@ func initConfig() {
 	}
 
 	// Where to find the configuration file, if it exists.
-	viper.SetConfigName("credentials") // name of rda config file (without extension)
-	viper.AddConfigPath(rdaPath)       // adding rda directory as first search path
+	viper.SetConfigName(configName) // name of rda config file (without extension)
+	viper.AddConfigPath(rdaPath)    // adding rda directory as first search path
 	viper.ReadInConfig()
-}
-
-// rdaDir returns the location of where we store the RDA configuration directory.
-func rdaDir() (string, error) {
-	home, err := homedir.Dir()
-	if err != nil {
-		return "", err
-	}
-	rdaPath := path.Join(home, ".rda")
-	return rdaPath, nil
-}
-
-// ensureRDADir will create the RDA directory if it doesn't already exist.
-func ensureRDADir() (string, error) {
-	rdaPath, err := rdaDir()
-	if err != nil {
-		return "", err
-	}
-	return rdaPath, os.MkdirAll(rdaPath, 0600)
 }
