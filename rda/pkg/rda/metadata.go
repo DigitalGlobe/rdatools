@@ -1,5 +1,6 @@
 package rda
 
+// Metadata holds the various pieces of information returned by RDA's metadata endpoint.
 type Metadata struct {
 	ImageMetadata struct {
 		NumXTiles   int
@@ -27,4 +28,3 @@ type Metadata struct {
 		ShearY                     float64
 	}
 }
-

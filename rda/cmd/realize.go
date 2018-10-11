@@ -1,14 +1,6 @@
 package cmd
 
 import (
-	"encoding/xml"
-	"fmt"
-	"log"
-	"os"
-	"time"
-
-	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
-	"github.com/cheggaaa/pb"
 	"github.com/spf13/cobra"
 )
 
@@ -19,59 +11,60 @@ var realizeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		log.SetFlags(log.Lshortfile)
-
-		graphID, nodeID := args[0], args[1]
-		shortGraphID := graphID
-		if len(shortGraphID) > 10 {
-			shortGraphID = shortGraphID[0:10]
-		}
-
-		config, err := newConfig()
-		if err != nil {
-			return err
-		}
-
-		md := Metadata(graphID, nodeID, config)
-
-		// md.ImageMetadata.NumXTiles = 3
-		// md.ImageMetadata.NumYTiles = 3
-
-		// Download tiles.
-		r, err := rda.NewRetriever(graphID, nodeID, *md, fmt.Sprintf("%s-%s", shortGraphID, nodeID), config.Token)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		bar := pb.StartNew(md.ImageMetadata.NumXTiles * md.ImageMetadata.NumYTiles)
-
-		ts := time.Now()
-		tileMap := r.Retrieve(bar.Increment)
-		elapsed := time.Since(ts)
-		bar.FinishPrint("The End!")
-		log.Printf("Tile retrieval took %s", elapsed)
-
-		// Build VRT.
-		vrt, err := rda.NewVRT(md, tileMap)
-		if err != nil {
-			log.Fatal("failed building vrt")
-		}
-
-		vrtFile := fmt.Sprintf("%s-%s.vrt", shortGraphID, nodeID)
-		f, err := os.Create(vrtFile)
-		if err != nil {
-			log.Fatal("failure creating VRT file")
-		}
-		defer f.Close()
-
-		enc := xml.NewEncoder(f)
-		enc.Indent("  ", "    ")
-		if err := enc.Encode(vrt); err != nil {
-			log.Fatalf("error: %v\n", err)
-		}
-
-		fmt.Printf("VRT available at %s\n", vrtFile)
 		return nil
+		// log.SetFlags(log.Lshortfile)
+
+		// graphID, nodeID := args[0], args[1]
+		// shortGraphID := graphID
+		// if len(shortGraphID) > 10 {
+		// 	shortGraphID = shortGraphID[0:10]
+		// }
+
+		// config, err := newConfig()
+		// if err != nil {
+		// 	return err
+		// }
+
+		// md := Metadata(graphID, nodeID, config)
+
+		// // md.ImageMetadata.NumXTiles = 3
+		// // md.ImageMetadata.NumYTiles = 3
+
+		// // Download tiles.
+		// r, err := rda.NewRetriever(graphID, nodeID, *md, fmt.Sprintf("%s-%s", shortGraphID, nodeID), config.Token)
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+
+		// bar := pb.StartNew(md.ImageMetadata.NumXTiles * md.ImageMetadata.NumYTiles)
+
+		// ts := time.Now()
+		// tileMap := r.Retrieve(bar.Increment)
+		// elapsed := time.Since(ts)
+		// bar.FinishPrint("The End!")
+		// log.Printf("Tile retrieval took %s", elapsed)
+
+		// // Build VRT.
+		// vrt, err := rda.NewVRT(md, tileMap)
+		// if err != nil {
+		// 	log.Fatal("failed building vrt")
+		// }
+
+		// vrtFile := fmt.Sprintf("%s-%s.vrt", shortGraphID, nodeID)
+		// f, err := os.Create(vrtFile)
+		// if err != nil {
+		// 	log.Fatal("failure creating VRT file")
+		// }
+		// defer f.Close()
+
+		// enc := xml.NewEncoder(f)
+		// enc.Indent("  ", "    ")
+		// if err := enc.Encode(vrt); err != nil {
+		// 	log.Fatalf("error: %v\n", err)
+		// }
+
+		// fmt.Printf("VRT available at %s\n", vrtFile)
+		// return nil
 	},
 }
 

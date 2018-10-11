@@ -86,7 +86,7 @@ var configureCmd = &cobra.Command{
 				*configVar.val = s
 			}
 		}
-		return writeConfig(&config)
+		return writeConfig(&config, nil)
 	},
 }
 
@@ -124,10 +124,17 @@ func newConfigFromRDADir() (Config, error) {
 	return config, nil
 }
 
-// cacheToken updates an existing configuration file with the
-// provided one.  Note that we only update the profile as stored in
-// viper.
-func writeConfig(config *Config) error {
+// writeConfig creates or updates an existing configuration file with
+// the provided Config.
+//
+// Note that we only update the profile associated with the "profile"
+// variable in viper.  We do not write a profile if GBDX_USERNAME or
+// GBDX_PASSWORD are set.
+func writeConfig(config *Config, ts oauth2.TokenSource) error {
+	if viper.IsSet("gbdx_username") || viper.IsSet("gbdx_password") {
+		return nil
+	}
+
 	// Need the RDA dir around to write the config to.
 	rdaDir, err := ensureRDADir()
 	if err != nil {
@@ -144,6 +151,14 @@ func writeConfig(config *Config) error {
 	_, err = toml.DecodeFile(confFile, &profilesOut)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to parse the configurtion file: %v", err)
+	}
+
+	// Update the config with a new token from the source.
+	if ts != nil {
+		config.Token, err = ts.Token()
+		if err != nil {
+			config.Token = nil
+		}
 	}
 
 	// Update this profile and write it to the credentials file.
