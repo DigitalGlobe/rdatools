@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 
 	"context"
@@ -35,10 +34,7 @@ var metadataCmd = &cobra.Command{
 			return err
 		}
 
-		if err := json.NewEncoder(os.Stdout).Encode(md); err != nil {
-			log.Fatalf("failed streaming response, err: %+v", err)
-		}
-		return nil
+		return json.NewEncoder(os.Stdout).Encode(md)
 	},
 }
 
