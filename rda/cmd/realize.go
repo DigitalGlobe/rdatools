@@ -1,16 +1,21 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
+	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
 	"github.com/spf13/cobra"
 )
 
 var (
-	srcWin  sourceWindowFlag
-	projWin projectionWindowFlag
+	srcWin  sourceWindow
+	projWin projectionWindow
 )
 
 // realizeCmd represents the realize command
@@ -19,27 +24,32 @@ var realizeCmd = &cobra.Command{
 	Short: "Materialize the tiles that compose a graph and wrap it in a VRT",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println(srcWin, projWin)
-		return nil
+		if (projWin != projectionWindow{} && srcWin != sourceWindow{}) {
+			return errors.New("--projwin and --srcwin cannot be set at the same time")
+		}
 
-		// graphID, nodeID := args[0], args[1]
-		// config, err := newConfig()
-		// if err != nil {
-		// 	return err
-		// }
+		graphID, nodeID := args[0], args[1]
+		config, err := newConfig()
+		if err != nil {
+			return err
+		}
 
-		// client, ts, err := newClient(context.TODO(), &config)
-		// if err != nil {
-		// 	return err
-		// }
-		// defer writeConfig(&config, ts)
+		client, ts, err := newClient(context.TODO(), &config)
+		if err != nil {
+			return err
+		}
+		defer writeConfig(&config, ts)
 
-		// md, err := rda.FetchMetadata(graphID, nodeID, client)
-		// if err != nil {
-		// 	return err
-		// }
+		md, err := rda.FetchMetadata(graphID, nodeID, client)
+		if err != nil {
+			return err
+		}
 
-		// return json.NewEncoder(os.Stdout).Encode(md)
+		// Convert projWin into a srcWin if we were given one.
+		if (projWin != projectionWindow{}) {
+		}
+
+		return json.NewEncoder(os.Stdout).Encode(md)
 
 		// log.SetFlags(log.Lshortfile)
 
@@ -104,15 +114,15 @@ func init() {
 	realizeCmd.Flags().Var(&projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
 }
 
-type sourceWindowFlag struct {
+type sourceWindow struct {
 	xOff, yOff, xSize, ySize int
 }
 
-func (s *sourceWindowFlag) String() string {
-	return "0,0,0,0"
+func (s *sourceWindow) String() string {
+	return ""
 }
 
-func (s *sourceWindowFlag) Set(value string) error {
+func (s *sourceWindow) Set(value string) error {
 	vals := strings.SplitN(value, ",", 4)
 	if len(vals) != 4 {
 		return fmt.Errorf("expected 4 values, but got %d", len(vals))
@@ -133,19 +143,19 @@ func (s *sourceWindowFlag) Set(value string) error {
 	return nil
 }
 
-func (s *sourceWindowFlag) Type() string {
+func (s *sourceWindow) Type() string {
 	return "int,int,int,int"
 }
 
-type projectionWindowFlag struct {
+type projectionWindow struct {
 	ulx, uly, lrx, lry float64
 }
 
-func (p *projectionWindowFlag) String() string {
-	return "0,0,0,0"
+func (p *projectionWindow) String() string {
+	return ""
 }
 
-func (p *projectionWindowFlag) Set(value string) error {
+func (p *projectionWindow) Set(value string) error {
 	vals := strings.SplitN(value, ",", 4)
 	if len(vals) != 4 {
 		return fmt.Errorf("expected 4 values, but got %d", len(vals))
@@ -166,6 +176,6 @@ func (p *projectionWindowFlag) Set(value string) error {
 	return nil
 }
 
-func (p *projectionWindowFlag) Type() string {
+func (p *projectionWindow) Type() string {
 	return "float,float,float,float"
 }
