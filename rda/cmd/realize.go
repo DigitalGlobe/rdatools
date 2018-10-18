@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"math"
 	"strconv"
 	"strings"
 
@@ -20,15 +19,15 @@ var (
 
 // realizeCmd represents the realize command
 var realizeCmd = &cobra.Command{
-	Use:   "realize",
+	Use:   "realize <graph-id> <node-id> <output-vrt>",
 	Short: "Materialize the tiles that compose a graph and wrap it in a VRT",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if (projWin != projectionWindow{} && srcWin != sourceWindow{}) {
 			return errors.New("--projwin and --srcwin cannot be set at the same time")
 		}
 
-		graphID, nodeID := args[0], args[1]
+		graphID, nodeID, vrtPath := args[0], args[1], args[2]
 		config, err := newConfig()
 		if err != nil {
 			return err
@@ -47,17 +46,28 @@ var realizeCmd = &cobra.Command{
 
 		// Convert projWin into a srcWin if we were given one.
 		if (projWin != projectionWindow{}) {
+			igt, err := md.ImageGeoreferencing.Invert()
+			if err != nil {
+				return err
+			}
+			xOff, yOff := igt.Apply(projWin.ulx, projWin.uly)
+			srcWin.xOff = int(math.Floor(xOff))
+			srcWin.yOff = int(math.Floor(yOff))
+
+			xOffLR, yOffLR := igt.Apply(projWin.lrx, projWin.lry)
+			srcWin.xSize = int(math.Ceil(xOffLR - xOff))
+			srcWin.ySize = int(math.Ceil(yOffLR - yOff))
 		}
+		mdWindow, err := md.Subset(srcWin.xOff, srcWin.yOff, srcWin.xSize, srcWin.ySize)
+		if err != nil {
+			return err
+		}
+		//return json.NewEncoder(os.Stdout).Encode(mdWindow)
 
-		return json.NewEncoder(os.Stdout).Encode(md)
-
-		// log.SetFlags(log.Lshortfile)
-
-		// graphID, nodeID := args[0], args[1]
-		// shortGraphID := graphID
-		// if len(shortGraphID) > 10 {
-		// 	shortGraphID = shortGraphID[0:10]
-		// }
+		shortGraphID := graphID
+		if len(shortGraphID) > 10 {
+			shortGraphID = shortGraphID[0:10]
+		}
 
 		// config, err := newConfig()
 		// if err != nil {

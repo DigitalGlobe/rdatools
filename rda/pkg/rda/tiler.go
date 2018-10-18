@@ -13,29 +13,31 @@ import (
 	"path/filepath"
 
 	"github.com/hashicorp/go-retryablehttp"
-	"golang.org/x/oauth2"
 )
 
-type Retriever struct {
-	client      *retryablehttp.Client
-	token       *oauth2.Token
+// Realizer realizes tiles out of RDA.
+type Realizer struct {
+	client      Client
+	metadata    Metadata
+	tileURL     string
+	outDir      string
 	numParallel int
-
-	metadata Metadata
-
-	tileURL string
-	outDir  string
 }
 
-func NewRetriever(graphID, nodeID string, metadata Metadata, outDir string, gbdxToken *oauth2.Token) (*Retriever, error) {
-	r := &Retriever{
-		client:   retryablehttp.NewClient(),
-		token:    gbdxToken,
+// NewRealizer returns an initialized Realizer.
+//
+// graphID and nodeID are the RDA graph and node you are trying to
+// realize.  All tiles present in metadata will be downloaded, so modify
+// this to suite your needs.  outDir is where the tiles will be placed,
+// and this directory will be created for you if not present. client is a
+// configured http client that is used for all the tile requests.
+func NewRealizer(graphID, nodeID string, metadata Metadata, outDir string, client Client) (*Retriever, error) {
+	r := &Realizer{
+		client:   client,
 		metadata: metadata,
-		tileURL:  fmt.Sprintf("https://rda.geobigdata.io/v1/tile/%s/%s/%%d/%%d.tif", graphID, nodeID),
+		tileURL:  fmt.Sprintf(rdaTileEndpoint, graphID, nodeID),
 		outDir:   outDir,
 	}
-	r.client.Logger = nil
 
 	if r.numParallel == 0 {
 		r.numParallel = 4 * runtime.NumCPU()
