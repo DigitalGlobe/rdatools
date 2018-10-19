@@ -4,6 +4,8 @@ import (
 	"encoding/xml"
 	"fmt"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 type VRTDataset struct {
@@ -82,63 +84,96 @@ func RDAToGDALType(rda string) (string, error) {
 	case "double":
 		return "Float64", nil
 	}
-	return "", fmt.Errorf("RDA type %q has no mapping to a GDAL type", rda)
+	return "", errors.Errorf("RDA type %q has no mapping to a GDAL type", rda)
 }
 
-func NewVRT(m *Metadata, tileMap map[string]string) (*VRTDataset, error) {
-
-	GDALType, err := RDAToGDALType(m.ImageMetadata.DataType)
-	if err != nil {
-		return nil, err
+func tileExtents(tiles []TileInfo) (minX, minY, maxX, maxY int) {
+	if len(tiles) > 0 {
+		minX = tiles[0].XTile
+		maxX = minX
+		minY = tiles[0].YTile
+		maxY = minY
 	}
+	for _, tile := range tiles {
+		if tile.XTile < minX {
+			minX = tile.XTile
+		}
+		if tile.YTile < minY {
+			minY = tile.YTile
+		}
+		if tile.XTile > maxX {
+			maxX = tile.XTile
+		}
+		if tile.YTile > maxY {
+			maxY = tile.YTile
+		}
+	}
+	return minX, minY, maxX, maxY
+}
 
+// NewVRT returns a populated VRT struct composed of the tiles and metadata given to it.
+func NewVRT(m *Metadata, tiles []TileInfo) (*VRTDataset, error) {
+	minXTile, minYTile, maxXTile, maxYTile := tileExtents(tiles)
+	numXTiles, numYTiles := maxXTile-minXTile+1, maxYTile-minYTile+1
+	tx, ty := m.TileGeoreferencing().Apply(float64(minXTile), float64(minYTile))
+
+	// The outer container of the VRT.
 	vrt := VRTDataset{
-		RasterXSize: m.ImageMetadata.TileXSize * m.ImageMetadata.NumXTiles,
-		RasterYSize: m.ImageMetadata.TileYSize * m.ImageMetadata.NumYTiles,
+		RasterXSize: m.ImageMetadata.TileXSize * numXTiles,
+		RasterYSize: m.ImageMetadata.TileYSize * numYTiles,
 		SRS:         m.ImageGeoreferencing.SpatialReferenceSystemCode,
 		GeoTransform: [6]float64{
-			m.ImageGeoreferencing.TranslateX,
+			tx,
 			m.ImageGeoreferencing.ScaleX,
 			m.ImageGeoreferencing.ShearX,
-			m.ImageGeoreferencing.TranslateY,
+			ty,
 			m.ImageGeoreferencing.ShearY,
 			m.ImageGeoreferencing.ScaleY,
 		},
 		Bands: make([]VRTRasterBand, 0, m.ImageMetadata.NumBands),
 	}
 
+	// These guys are the same for all the tiles that come back from RDA.
+	GDALType, err := RDAToGDALType(m.ImageMetadata.DataType)
+	if err != nil {
+		return nil, err
+	}
+
+	srcProps := SourceProperties{
+		BlockXSize:  m.ImageMetadata.TileXSize,
+		BlockYSize:  m.ImageMetadata.TileYSize,
+		DataType:    GDALType,
+		RasterXSize: m.ImageMetadata.TileXSize,
+		RasterYSize: m.ImageMetadata.TileYSize,
+	}
+	srcRect := Rect{
+		XOff:  0,
+		YOff:  0,
+		XSize: m.ImageMetadata.TileXSize,
+		YSize: m.ImageMetadata.TileYSize,
+	}
+
+	// Build up the vrt bands.
 	for b := 0; b < m.ImageMetadata.NumBands; b++ {
 		band := VRTRasterBand{
 			DataType: GDALType,
 			Band:     b + 1,
 		}
-		for x := m.ImageMetadata.MinTileX; x < m.ImageMetadata.NumXTiles; x++ {
-			for y := m.ImageMetadata.MinTileY; y < m.ImageMetadata.NumYTiles; y++ {
-				ss := SimpleSource{
-					SourceFilename: SourceFilename{Filename: tileMap[fmt.Sprintf("%d/%d", x, y)], Shared: false, RelativeToVRT: true},
-					SourceBand:     b + 1,
-					SourceProperties: SourceProperties{
-						BlockXSize:  m.ImageMetadata.TileXSize,
-						BlockYSize:  m.ImageMetadata.TileYSize,
-						DataType:    GDALType,
-						RasterXSize: m.ImageMetadata.TileXSize,
-						RasterYSize: m.ImageMetadata.TileYSize,
-					},
-					SrcRect: Rect{
-						XOff:  0,
-						YOff:  0,
-						XSize: m.ImageMetadata.TileXSize,
-						YSize: m.ImageMetadata.TileYSize,
-					},
-					DstRect: Rect{
-						XOff:  x * m.ImageMetadata.TileXSize,
-						YOff:  y * m.ImageMetadata.TileYSize,
-						XSize: m.ImageMetadata.TileXSize,
-						YSize: m.ImageMetadata.TileYSize,
-					},
-				}
-				band.SimpleSource = append(band.SimpleSource, ss)
+		for _, tile := range tiles {
+			ss := SimpleSource{
+				SourceFilename:   SourceFilename{Filename: tile.FilePath, Shared: false, RelativeToVRT: true},
+				SourceBand:       b + 1,
+				SourceProperties: srcProps,
+				SrcRect:          srcRect,
+				DstRect: Rect{
+					XOff:  (tile.XTile - minXTile) * m.ImageMetadata.TileXSize,
+					YOff:  (tile.YTile - minYTile) * m.ImageMetadata.TileYSize,
+					XSize: m.ImageMetadata.TileXSize,
+					YSize: m.ImageMetadata.TileYSize,
+				},
 			}
+			band.SimpleSource = append(band.SimpleSource, ss)
+
 		}
 		vrt.Bands = append(vrt.Bands, band)
 	}

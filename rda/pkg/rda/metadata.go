@@ -1,7 +1,10 @@
 package rda
 
-import "fmt"
-import "math"
+import (
+	"math"
+
+	"github.com/pkg/errors"
+)
 
 // Metadata holds the various pieces of information returned by RDA's metadata endpoint.
 type Metadata struct {
@@ -9,13 +12,21 @@ type Metadata struct {
 	ImageGeoreferencing ImageGeoreferencing
 }
 
-// Subset returns a new Metadata but holding the tiles that contain the pixel space subsets provided.
-func (m *Metadata) Subset(xOff, yOff, xSize, ySize int) (*Metadata, error) {
+// Subset returns a TileWindow holding the tiles that contain the
+// pixel space subsets provided.  If the inputs are all 0, we return the
+// Metadata's TileWindow, e.g. all the tiles in the image.
+func (m *Metadata) Subset(xOff, yOff, xSize, ySize int) (*TileWindow, error) {
+	tm := m.ImageMetadata.TileWindow
 	if xOff == 0 && yOff == 0 && xSize == 0 && ySize == 0 {
-		return m, nil
+		return &tm, nil
 	}
 	if xSize < 1 || ySize < 1 {
-		return nil, fmt.Errorf("(xSize, ySize) = (%d, %d), but must be positive", xSize, ySize)
+		return nil, errors.Errorf("(xSize, ySize) = (%d, %d), but must be positive", xSize, ySize)
+	}
+	if (xOff+xSize < 0) || (yOff+ySize < 0) || (xOff > m.ImageMetadata.ImageWidth) || (yOff > m.ImageMetadata.ImageHeight) {
+		return nil, errors.Errorf("requested window (%d,%d) - (%d,%d) not contained in image window (%d,%d) - (%d,%d)",
+			xOff, yOff, xOff+xSize, yOff+ySize,
+			0, 0, m.ImageMetadata.ImageWidth, m.ImageMetadata.ImageHeight)
 	}
 
 	invTileGT, err := m.TileGeoreferencing().Invert()
@@ -29,13 +40,26 @@ func (m *Metadata) Subset(xOff, yOff, xSize, ySize int) (*Metadata, error) {
 	xTileTL, yTileTL := invTileGT.Apply(xGeoTL, yGeoTL)
 	xTileLR, yTileLR := invTileGT.Apply(xGeoLR, yGeoLR)
 
-	mSubset := *m
-	imd := &mSubset.ImageMetadata
-	imd.MinTileX, imd.MinTileY = int(xTileTL), int(yTileTL)
-	imd.MaxTileX, imd.MaxTileY = int(xTileLR), int(yTileLR)
-	imd.NumXTiles, imd.NumYTiles = imd.MaxTileX-imd.MinTileX+1, imd.MaxTileY-imd.MinTileY+1
+	tm.MinTileX, tm.MinTileY = int(xTileTL), int(yTileTL)
+	tm.MaxTileX, tm.MaxTileY = int(xTileLR), int(yTileLR)
 
-	return &mSubset, nil
+	// Truncate to fit into the window.
+	if tm.MinTileX < m.ImageMetadata.MinTileX {
+		tm.MinTileX = m.ImageMetadata.MinTileX
+	}
+	if tm.MaxTileX > m.ImageMetadata.MaxTileX {
+		tm.MaxTileX = m.ImageMetadata.MaxTileX
+	}
+	if tm.MinTileY < m.ImageMetadata.MinTileY {
+		tm.MinTileY = m.ImageMetadata.MinTileY
+	}
+	if tm.MaxTileY > m.ImageMetadata.MaxTileY {
+		tm.MaxTileY = m.ImageMetadata.MaxTileY
+	}
+
+	tm.NumXTiles, tm.NumYTiles = tm.MaxTileX-tm.MinTileX+1, tm.MaxTileY-tm.MinTileY+1
+
+	return &tm, nil
 }
 
 // TileGeoreferencing returns an ImageGeoreferencing but appropriate for for tile coordinates (rather than pixel coordinates).
@@ -60,6 +84,11 @@ type ImageMetadata struct {
 
 	TileXSize int
 	TileYSize int
+	TileWindow
+}
+
+// TileWindow contains tile specific metadata.
+type TileWindow struct {
 	NumXTiles int
 	NumYTiles int
 	MinTileX  int
@@ -110,7 +139,7 @@ func (gt *ImageGeoreferencing) hardInvert() (ImageGeoreferencing, error) {
 	// The more general case; we assume the third row of the affine matrix is [0 0 1].
 	det := gt.ScaleX*gt.ScaleY - gt.ShearX*gt.ShearY
 	if math.Abs(det) < 0.000000000000001 {
-		return ImageGeoreferencing{}, fmt.Errorf("non invertable geo transform = %+v", gt)
+		return ImageGeoreferencing{}, errors.Errorf("non invertable geo transform = %+v", gt)
 	}
 	invDet := 1.0 / det
 
