@@ -1,4 +1,4 @@
-// Copyright © 2018 Patrick Young <patrick.mckendree.young@gmail.com, patrick.young@digitalglobe.com>
+// Copyright © 2018 DigitalGlobe
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
