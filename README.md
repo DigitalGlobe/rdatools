@@ -36,7 +36,7 @@ For example,
 ```
 rda dgstrip 103001000EBC3C00 103001000EBC3C00-ovr.vrt --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
 ```
-Will return a downsampled version of catalog id `103001000EBC3C00` to you as a VRT.  Just load it up into QGIS and profit! 
+Will return a downsampled version of catalog id `103001000EBC3C00` to you as a VRT.  Just load it up into QGIS/ArcGIS/your favorite viewer that can read VRTs and profit! 
 
 The actual tiles are stored in a directory named `103001000EBC3C00` adjacent to the VRT.  The VRT format is an xml based format that describes how to lay out the tiles as if they were a single image.  You can create a single geotiff out of the downloaded product via GDAL, e.g. `gdal_translate 103001000EBC3C00.vrt 103001000EBC3C00.tif` should do it if you have GDAL installed.
 

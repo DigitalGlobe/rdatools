@@ -25,9 +25,12 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
+	"syscall"
 	"time"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
@@ -54,6 +57,7 @@ var dgstripCmd = &cobra.Command{
 	Short: "Realize tiles of a DigitalGlobe strip from RDA",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Get our parameters sorted out.
 		catID, vrtPath := args[0], args[1]
 		params := map[string]string{"catalogId": catID}
 		qp := queryParams(params)
@@ -63,7 +67,23 @@ var dgstripCmd = &cobra.Command{
 			return err
 		}
 
-		client, ts, err := newClient(context.TODO(), &config)
+		// Setup our context to handle cancellation and listen for signals.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			sigs := make(chan os.Signal, 1)
+			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+			select {
+			case s := <-sigs:
+				log.Printf("received a shutdown signal %s, winding down", s)
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+
+		// Get the metadata and figure out what tiles we want to pull.
+		client, ts, err := newClient(ctx, &config)
 		if err != nil {
 			return err
 		}
@@ -87,7 +107,7 @@ var dgstripCmd = &cobra.Command{
 		}
 		tileDir := vrtPath[:len(vrtPath)-len(path.Ext(vrtPath))]
 		tStart := time.Now()
-		tiles, err := realizer.RealizeTemplate(context.TODO(), "DigitalGlobeStrip", qp, *tileWindow, tileDir, bar.Increment)
+		tiles, err := realizer.RealizeTemplate(ctx, "DigitalGlobeStrip", qp, *tileWindow, tileDir, bar.Increment)
 		if err != nil {
 			return err
 		}

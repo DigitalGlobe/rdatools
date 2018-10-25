@@ -24,10 +24,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"runtime"
+	"strings"
 	"sync"
 
 	"os"
@@ -51,8 +51,13 @@ type TileInfo struct {
 
 // Realizer realizes tiles out of RDA.
 type Realizer struct {
-	Client      Client
-	numParallel int
+	// Client is the http client to use when realizing.
+	Client Client
+
+	// NumParallel is how many tile requests to have going
+	// concurrently.  By default we use 4 times the number of CPUs
+	// detected.
+	NumParallel int
 }
 
 // RealizeGraph will retrieve all the tiles from in the RDA
@@ -83,13 +88,34 @@ func (r *Realizer) RealizeTemplate(ctx context.Context, templateID string, qp ur
 	return r.realize(ctx, tileURL, qp, tileWindow, outDir, onFinished)
 }
 
+type realizeError struct {
+	errors []error
+}
+
+func (r *realizeError) addError(err error) *realizeError {
+	// Note that this is safe to call on a nil reciever.
+	if r == nil {
+		return &realizeError{errors: []error{err}}
+	}
+	r.errors = append(r.errors, err)
+	return r
+}
+
+func (r *realizeError) Error() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%d error(s) during realization:\n", len(r.errors))
+	for i, err := range r.errors {
+		fmt.Fprintf(&sb, "\t%d%v\n", i, err)
+	}
+	return sb.String()
+}
+
 func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, tileWindow TileWindow, outDir string, onFinished func() int) ([]TileInfo, error) {
 	if err := os.MkdirAll(outDir, 0777); err != nil {
 		return nil, err
 	}
 
 	wg := sync.WaitGroup{}
-
 	jobsIn := make(chan realizeJob)
 	jobsOut := make(chan realizeJob)
 
@@ -99,8 +125,8 @@ func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, t
 
 	// Spin up some workers. Note these workers will only shut
 	// down once jobsIn is closed and jobsOut is drained.
-	np := r.numParallel
-	if r.numParallel < 1 {
+	np := r.NumParallel
+	if r.NumParallel < 1 {
 		np = 4 * runtime.NumCPU()
 	}
 	for i := 0; i < np; i++ {
@@ -108,9 +134,7 @@ func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, t
 		go func(jobsIn <-chan realizeJob, jobsOut chan<- realizeJob) {
 			defer wg.Done()
 			for job := range jobsIn {
-				if err := r.processJob(job, jobsOut, onFinished); err != nil {
-					log.Printf("%+v\n", err)
-				}
+				r.processJob(job, jobsOut, onFinished)
 			}
 		}(jobsIn, jobsOut)
 	}
@@ -125,19 +149,19 @@ func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, t
 
 		for x := tileWindow.MinTileX; x <= tileWindow.MaxTileX; x++ {
 			for y := tileWindow.MinTileY; y <= tileWindow.MaxTileY; y++ {
-				tURL := fmt.Sprintf(tileURL, x, y)
-				u, err := url.Parse(tURL)
-				if err != nil {
-					log.Println(errors.Wrapf(err, "failed parsing %s during tile realization", tURL)) // TODO, make this not stupid.
-					continue
-				}
-				u.RawQuery = qp.Encode()
-
 				rj := realizeJob{
-					url:      u.String(),
 					filePath: filepath.Join(outDir, fmt.Sprintf("tile_%d_%d.tif", x, y)),
 					xTile:    x,
 					yTile:    y,
+				}
+
+				tURL := fmt.Sprintf(tileURL, x, y)
+				u, err := url.Parse(tURL)
+				if err != nil {
+					rj.err = errors.Wrapf(err, "failed parsing %s during tile realization", tURL)
+				} else {
+					u.RawQuery = qp.Encode()
+					rj.url = u.String()
 				}
 				select {
 				case jobsIn <- rj:
@@ -160,56 +184,73 @@ func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, t
 	// wait until all works shut down, so we should nab all
 	// successfully downloaded tiles before returning.
 	completedTiles := []TileInfo{}
+	var jobserr *realizeError
 	for job := range jobsOut {
-		completedTiles = append(completedTiles, TileInfo{FilePath: job.filePath, XTile: job.xTile, YTile: job.yTile})
+		if job.err != nil {
+			jobserr = jobserr.addError(job.err)
+		} else {
+			completedTiles = append(completedTiles, TileInfo{FilePath: job.filePath, XTile: job.xTile, YTile: job.yTile})
+		}
+	}
+	if jobserr != nil {
+		return completedTiles, jobserr
 	}
 	return completedTiles, nil
 }
 
 // processJob does the actual download of a tile and writing of it to
 // disk.  This should be safe to run concurrently.
-func (r *Realizer) processJob(job realizeJob, jobsOut chan<- realizeJob, onFinished func() int) error {
+func (r *Realizer) processJob(job realizeJob, jobsOut chan<- realizeJob, onFinished func() int) {
+	// Note we always send our input jobs to the output channel, adding an error to job if one occurred.
+	defer func() { jobsOut <- job }()
 	defer onFinished()
-	// If tile is already present, don't download it.
-	if _, err := os.Stat(job.filePath); !os.IsNotExist(err) {
-		jobsOut <- job
-		return nil
+
+	// Already errored, so just pass the message along.
+	if job.err != nil {
+		return
 	}
 
-	// Download the tile.
+	// If tile is already present, don't download it.
+	if _, err := os.Stat(job.filePath); !os.IsNotExist(err) {
+		return
+	}
+
+	// Download the tile from RDA and dump it to disk.
 	res, err := r.Client.Get(job.url)
 	if err != nil {
-		return errors.Wrapf(err, "failed requesting tile at %s, err: %v", job.url, err)
+		job.err = errors.Wrapf(err, "failed requesting tile at %s", job.url)
+		return
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return ResponseToError(res.Body, fmt.Sprintf("failed requesting tile at %s, status: %d %s", job.url, res.StatusCode, res.Status))
+		job.err = ResponseToError(res.Body, fmt.Sprintf("failed requesting tile at %s, status: %d %s", job.url, res.StatusCode, res.Status))
+		return
 	}
 
 	f, err := os.Create(job.filePath)
 	if err != nil {
-		return errors.Wrapf(err, "failed creating file for tile at %s", job.url)
+		job.err = errors.Wrapf(err, "failed creating file for tile at %s", job.url)
+		return
 	}
 	if _, err := io.Copy(f, res.Body); err != nil {
 		err = errors.Wrapf(err, "failed copying tile at %s to disk", job.url)
 		if nerr := f.Close(); nerr != nil {
-			err = errors.WithMessagef(err, "failed closing partially downloaded tile at %s, err: %v", job.filePath, nerr)
+			err = errors.WithMessagef(err, "failed closing partially downloaded tile at %s: %v", job.filePath, nerr)
 		}
 		if nerr := os.Remove(job.filePath); nerr != nil {
 			err = errors.WithMessagef(err, "failed removing file for partially downloaded tile at %s, err: %v", job.filePath, nerr)
 		}
-		return err
+		job.err = err
+		return
 	}
 	if err := f.Close(); err != nil {
 		err = errors.Wrapf(err, "failed closing file %s for downloaded tile", job.filePath)
 		if nerr := os.Remove(job.filePath); nerr != nil {
-			err = errors.WithMessagef(err, "failed removing file for downloaded tile at %s, err: %v", job.filePath, nerr)
+			err = errors.WithMessagef(err, "failed removing file for downloaded tile at %s: %v", job.filePath, nerr)
 		}
-		return err
+		job.err = err
 	}
-	jobsOut <- job
-	return nil
 }
 
 type realizeJob struct {
@@ -217,4 +258,5 @@ type realizeJob struct {
 	filePath string
 	xTile    int
 	yTile    int
+	err      error
 }
