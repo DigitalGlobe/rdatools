@@ -40,15 +40,17 @@ import (
 )
 
 var dgstripFlags struct {
-	srcWin  sourceWindow
-	projWin projectionWindow
-	crs     coordRefSys
-	acomp   bool
-	toa     bool
-	gsd     float64
-	bt      bandType
-	bands   bandCombo
-	dra     bool
+	crs   coordRefSys
+	acomp bool
+	toa   bool
+	gsd   float64
+	bt    bandType
+	bands bandCombo
+	dra   bool
+
+	srcWin     sourceWindow
+	projWin    projectionWindow
+	maxconcurr uint64
 }
 
 // dgstripCmd represents the dgstrip command
@@ -103,7 +105,8 @@ var dgstripCmd = &cobra.Command{
 		bar := pb.StartNew(tileWindow.NumXTiles * tileWindow.NumYTiles)
 
 		realizer := rda.Realizer{
-			Client: client,
+			Client:      client,
+			NumParallel: int(dgstripFlags.maxconcurr),
 		}
 		tileDir := vrtPath[:len(vrtPath)-len(path.Ext(vrtPath))]
 		tStart := time.Now()
@@ -216,7 +219,8 @@ func init() {
 	dgstripCmd.PersistentFlags().Var(&dgstripFlags.bands, "bands", `selected band combos, choose "ALL", "RGB", or a comma seperated list like "4,2,1"; indexing starts at 0 in the latter case`)
 	dgstripCmd.PersistentFlags().BoolVar(&dgstripFlags.dra, "dra", false, "apply a DRA (aka convert to 8 bit in a pretty way)")
 
-	// Controls windowing when fetching tiles.
+	// Local flags specific to fetching tiles.
+	dgstripCmd.Flags().Uint64Var(&dgstripFlags.maxconcurr, "maxconcurrency", 0, "set how many concurrent requests to allow; by default, 4 * num CPUs is used")
 	dgstripCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
 	dgstripCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
 }

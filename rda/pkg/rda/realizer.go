@@ -34,6 +34,7 @@ import (
 
 	"path/filepath"
 
+	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
 
@@ -52,7 +53,7 @@ type TileInfo struct {
 // Realizer realizes tiles out of RDA.
 type Realizer struct {
 	// Client is the http client to use when realizing.
-	Client Client
+	Client *retryablehttp.Client
 
 	// NumParallel is how many tile requests to have going
 	// concurrently.  By default we use 4 times the number of CPUs
@@ -105,7 +106,7 @@ func (r *realizeError) Error() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%d error(s) during realization:\n", len(r.errors))
 	for i, err := range r.errors {
-		fmt.Fprintf(&sb, "\t%d%v\n", i, err)
+		fmt.Fprintf(&sb, "\terror %d: %v\n", i+1, err)
 	}
 	return sb.String()
 }
@@ -134,7 +135,7 @@ func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, t
 		go func(jobsIn <-chan realizeJob, jobsOut chan<- realizeJob) {
 			defer wg.Done()
 			for job := range jobsIn {
-				r.processJob(job, jobsOut, onFinished)
+				r.processJob(ctx, job, jobsOut, onFinished)
 			}
 		}(jobsIn, jobsOut)
 	}
@@ -200,7 +201,7 @@ func (r *Realizer) realize(ctx context.Context, tileURL string, qp url.Values, t
 
 // processJob does the actual download of a tile and writing of it to
 // disk.  This should be safe to run concurrently.
-func (r *Realizer) processJob(job realizeJob, jobsOut chan<- realizeJob, onFinished func() int) {
+func (r *Realizer) processJob(ctx context.Context, job realizeJob, jobsOut chan<- realizeJob, onFinished func() int) {
 	// Note we always send our input jobs to the output channel, adding an error to job if one occurred.
 	defer func() { jobsOut <- job }()
 	defer onFinished()
@@ -216,7 +217,14 @@ func (r *Realizer) processJob(job realizeJob, jobsOut chan<- realizeJob, onFinis
 	}
 
 	// Download the tile from RDA and dump it to disk.
-	res, err := r.Client.Get(job.url)
+	req, err := retryablehttp.NewRequest("GET", job.url, nil)
+	if err != nil {
+		job.err = errors.Wrapf(err, "failed forming request for tile at %s", job.url)
+		return
+	}
+	req = req.WithContext(ctx)
+
+	res, err := r.Client.Do(req)
 	if err != nil {
 		job.err = errors.Wrapf(err, "failed requesting tile at %s", job.url)
 		return

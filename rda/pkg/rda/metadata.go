@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
 
@@ -38,13 +39,13 @@ type Metadata struct {
 }
 
 // GraphMetadata returns Metadata for the provided RDA graphID and nodeID.
-func GraphMetadata(graphID, nodeID string, client Client) (*Metadata, error) {
+func GraphMetadata(graphID, nodeID string, client *retryablehttp.Client) (*Metadata, error) {
 	ep := fmt.Sprintf(graphMetadataEnpoint, graphID, nodeID)
 	return fetchMetadata(ep, client)
 }
 
 // TemplateMetadata returns Metadata for the provided RDA template. queryParams can be nil.
-func TemplateMetadata(templateID string, client Client, qp url.Values) (*Metadata, error) {
+func TemplateMetadata(templateID string, client *retryablehttp.Client, qp url.Values) (*Metadata, error) {
 	u, err := url.Parse(fmt.Sprintf(templateMetadataEnpoint, templateID))
 	if err != nil {
 		return nil, errors.Wrap(err, "couldn't parse template metadata endpoint")
@@ -74,7 +75,7 @@ func ResponseToError(reader io.Reader, msg string) error {
 	return errors.Wrap(rdaerr, msg)
 }
 
-func fetchMetadata(endpoint string, client Client) (*Metadata, error) {
+func fetchMetadata(endpoint string, client *retryablehttp.Client) (*Metadata, error) {
 	res, err := client.Get(endpoint)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to form GET for fetching metadata")
@@ -252,8 +253,8 @@ func (gt *ImageGeoreferencing) hardInvert() (ImageGeoreferencing, error) {
 
 	return ImageGeoreferencing{
 		SpatialReferenceSystemCode: gt.SpatialReferenceSystemCode,
-		ScaleX:                     gt.ScaleY * invDet,
-		ShearY:                     -gt.ShearY * invDet,
+		ScaleX: gt.ScaleY * invDet,
+		ShearY: -gt.ShearY * invDet,
 
 		ShearX: -gt.ShearX * invDet,
 		ScaleY: gt.ScaleX * invDet,

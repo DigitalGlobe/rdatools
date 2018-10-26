@@ -53,7 +53,8 @@ to quickly create a Cobra application.`,
 		}
 		defer writeConfig(&config, ts)
 
-		urlPath := "https://rda.geobigdata.io/v1/template/DigitalGlobeStrip"
+		//urlPath := "https://rda.geobigdata.io/v1/template/DigitalGlobeStrip"
+		urlPath := "https://rda.geobigdata.io/v1/template/materialize/formats"
 		res, err := client.Get(urlPath)
 		if err != nil {
 			return errors.Wrapf(err, "failure requesting %s", urlPath)

@@ -23,7 +23,6 @@ package cmd
 import (
 	"context"
 
-	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
 	"github.com/hashicorp/go-retryablehttp"
 	"golang.org/x/oauth2"
 )
@@ -33,7 +32,7 @@ const (
 )
 
 // NewClient returns a rda.Client configured with oauth2 and retry.
-func newClient(ctx context.Context, config *Config) (rda.Client, oauth2.TokenSource, error) {
+func newClient(ctx context.Context, config *Config) (*retryablehttp.Client, oauth2.TokenSource, error) {
 	oauth2Conf := &oauth2.Config{
 		Endpoint: oauth2.Endpoint{TokenURL: tokenEndpoint},
 	}
