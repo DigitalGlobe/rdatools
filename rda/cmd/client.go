@@ -31,8 +31,32 @@ const (
 	tokenEndpoint = "https://geobigdata.io/auth/v1/oauth/token"
 )
 
-// NewClient returns a rda.Client configured with oauth2 and retry.
-func newClient(ctx context.Context, config *Config) (*retryablehttp.Client, oauth2.TokenSource, error) {
+// newClient returns a rda.Client configured with oauth2 and retry.
+// Be sure to defer the returned function when a successful call is
+// returned to enable updating the token.
+func newClient(ctx context.Context) (*retryablehttp.Client, func() error, error) {
+	ts, updateConfig, err := newTokenSource(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Configure http retrying.
+	client := retryablehttp.NewClient()
+	client.HTTPClient = oauth2.NewClient(ctx, ts)
+	client.Logger = nil
+
+	return client, updateConfig, nil
+}
+
+// newTokenSource returns a configured oauth2 token source and a
+// function that when invoked, will update the rda configuration file
+// with a new token.
+func newTokenSource(ctx context.Context) (oauth2.TokenSource, func() error, error) {
+	config, err := newConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	oauth2Conf := &oauth2.Config{
 		Endpoint: oauth2.Endpoint{TokenURL: tokenEndpoint},
 	}
@@ -45,12 +69,8 @@ func newClient(ctx context.Context, config *Config) (*retryablehttp.Client, oaut
 			return nil, nil, err
 		}
 	}
-	tokenSource := oauth2Conf.TokenSource(ctx, config.Token)
+	ts := oauth2Conf.TokenSource(ctx, config.Token)
+	updateConfig := func() error { return writeConfig(&config, ts) }
 
-	// Configure http retrying.
-	client := retryablehttp.NewClient()
-	client.HTTPClient = oauth2.NewClient(ctx, tokenSource)
-	client.Logger = nil
-
-	return client, tokenSource, nil
+	return ts, updateConfig, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -29,16 +30,16 @@ var realizeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		graphID, nodeID, vrtPath := args[0], args[1], args[2]
 
-		config, err := newConfig()
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
-
-		client, ts, err := newClient(context.TODO(), &config)
-		if err != nil {
-			return err
-		}
-		defer writeConfig(&config, ts)
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
 		md, err := rda.GraphMetadata(graphID, nodeID, client)
 		if err != nil {

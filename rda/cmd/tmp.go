@@ -23,6 +23,7 @@ package cmd
 import (
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -42,16 +43,16 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config, err := newConfig()
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
-
-		client, ts, err := newClient(context.TODO(), &config)
-		if err != nil {
-			return err
-		}
-		defer writeConfig(&config, ts)
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
 		//urlPath := "https://rda.geobigdata.io/v1/template/DigitalGlobeStrip"
 		urlPath := "https://rda.geobigdata.io/v1/template/materialize/formats"

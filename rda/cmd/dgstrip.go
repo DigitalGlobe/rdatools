@@ -48,8 +48,9 @@ var dgstripFlags struct {
 	bands bandCombo
 	dra   bool
 
-	srcWin     sourceWindow
-	projWin    projectionWindow
+	srcWin  sourceWindow
+	projWin projectionWindow
+
 	maxconcurr uint64
 }
 
@@ -62,12 +63,7 @@ var dgstripCmd = &cobra.Command{
 		// Get our parameters sorted out.
 		catID, vrtPath := args[0], args[1]
 		params := map[string]string{"catalogId": catID}
-		qp := queryParams(params)
-
-		config, err := newConfig()
-		if err != nil {
-			return err
-		}
+		qp := dgstripQueryParams(params)
 
 		// Setup our context to handle cancellation and listen for signals.
 		ctx, cancel := context.WithCancel(context.Background())
@@ -84,13 +80,18 @@ var dgstripCmd = &cobra.Command{
 			}
 		}()
 
-		// Get the metadata and figure out what tiles we want to pull.
-		client, ts, err := newClient(ctx, &config)
+		// The http client.
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
-		defer writeConfig(&config, ts)
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
+		// Figure out the window tile sizes requested.
 		md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
 		if err != nil {
 			return err
@@ -140,6 +141,48 @@ var dgstripCmd = &cobra.Command{
 	},
 }
 
+var dgstripBatchCmd = &cobra.Command{
+	Use:   "batch <catalog-id>",
+	Short: "Realize images of a DigitalGlobe strip from RDA via RDA batch materialization",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Get our parameters sorted out.
+		params := map[string]string{"catalogId": args[0]}
+		qp := dgstripQueryParams(params)
+
+		// The http client.
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
+
+		// Get the metadata and figure out what tiles we want to pull.
+		_, err = rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
+		if err != nil {
+			return err
+		}
+
+		// tileWindow, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
+		// if err != nil {
+		// 	return err
+		// }
+
+		// Submit as a batch job.
+		resp, err := rda.BatchMaterialize("DigitalGlobeStrip", "", rda.Tif, client, qp)
+		if err != nil {
+			return err
+		}
+
+		return json.NewEncoder(os.Stdout).Encode(resp)
+	},
+}
+
 var dgstripMetadataCmd = &cobra.Command{
 	Use:   "metadata <catalog-id>",
 	Short: "Get metadata desribing a realization of a DigitalGlobe strip from RDA",
@@ -147,18 +190,19 @@ var dgstripMetadataCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		params := map[string]string{"catalogId": args[0]}
-		qp := queryParams(params)
+		qp := dgstripQueryParams(params)
 
-		config, err := newConfig()
+		// The http client.
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
-
-		client, ts, err := newClient(context.TODO(), &config)
-		if err != nil {
-			return err
-		}
-		defer writeConfig(&config, ts)
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
 		md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
 		if err != nil {
@@ -169,7 +213,7 @@ var dgstripMetadataCmd = &cobra.Command{
 	},
 }
 
-func queryParams(params map[string]string) url.Values {
+func dgstripQueryParams(params map[string]string) url.Values {
 	qp := make(url.Values)
 	for key, val := range params {
 		qp.Add(key, val)
@@ -209,6 +253,7 @@ func queryParams(params map[string]string) url.Values {
 func init() {
 	rootCmd.AddCommand(dgstripCmd)
 	dgstripCmd.AddCommand(dgstripMetadataCmd)
+	dgstripCmd.AddCommand(dgstripBatchCmd)
 
 	// Control what is fed to the DigitalGlobeStrip template in RDA.
 	dgstripCmd.PersistentFlags().Var(&dgstripFlags.crs, "crs", "coordinate reference system to use, either \"UTM\" or \"EPSG:<code>\"")
@@ -223,4 +268,9 @@ func init() {
 	dgstripCmd.Flags().Uint64Var(&dgstripFlags.maxconcurr, "maxconcurrency", 0, "set how many concurrent requests to allow; by default, 4 * num CPUs is used")
 	dgstripCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
 	dgstripCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
+
+	// Local flags specific to fetching tiles.
+	dgstripBatchCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
+	dgstripBatchCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
+
 }

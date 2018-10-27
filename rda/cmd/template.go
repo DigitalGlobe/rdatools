@@ -23,6 +23,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
@@ -36,16 +37,16 @@ var templateCmd = &cobra.Command{
 	Short:  "Returns metadata describing the template's graph.",
 	Args:   cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config, err := newConfig()
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
-
-		client, ts, err := newClient(context.TODO(), &config)
-		if err != nil {
-			return err
-		}
-		defer writeConfig(&config, ts)
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
 		md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, nil)
 

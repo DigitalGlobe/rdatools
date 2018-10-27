@@ -26,16 +26,20 @@ import (
 	"log"
 	"os"
 
+	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
 	"github.com/spf13/cobra"
 )
 
-// tokenCmd represents the token command
-var tokenCmd = &cobra.Command{
-	Use:   "token",
-	Short: "Returns a GBDX token, fetching one if not cached",
+// jobCmd represents the job command
+var jobCmd = &cobra.Command{
+	Use:   "job <job id>",
+	Short: "status an RDA batch materialization job",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		jobID := args[0]
+
 		ctx := context.Background()
-		ts, writeConfig, err := newTokenSource(ctx)
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
@@ -45,18 +49,11 @@ var tokenCmd = &cobra.Command{
 			}
 		}()
 
-		token, err := ts.Token()
-		if err != nil {
-			return err
-		}
-
-		if err := json.NewEncoder(os.Stdout).Encode(token); err != nil {
-			return err
-		}
-		return nil
+		job, err := rda.FetchBatchStatus(jobID, client)
+		return json.NewEncoder(os.Stdout).Encode(job)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(tokenCmd)
+	rootCmd.AddCommand(jobCmd)
 }

@@ -28,6 +28,8 @@ const (
 	TemplateEndpoint        = "https://rda.geobigdata.io/v1/template/%s"
 	templateMetadataEnpoint = "https://rda.geobigdata.io/v1/template/%s/metadata"
 	templateTileEnpoint     = "https://rda.geobigdata.io/v1/template/%s/tile/%%d/%%d"
+	templateBatchEndpoint   = "https://rda.geobigdata.io/v1/template/materialize"
+	templateJobEndpoint     = "https://rda.geobigdata.io/v1/template/materialize/status/%s"
 
 	// OperatorEndpoint is where to get information about RDA operators.
 	OperatorEndpoint = "https://rda.geobigdata.io/v1/operator"

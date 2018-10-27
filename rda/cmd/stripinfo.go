@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -44,16 +45,16 @@ var stripinfoCmd = &cobra.Command{
 	the image you can pull out from those nodes.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config, err := newConfig()
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
 		}
-
-		client, ts, err := newClient(context.TODO(), &config)
-		if err != nil {
-			return err
-		}
-		defer writeConfig(&config, ts)
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
 		urlPath := fmt.Sprintf(rda.StripInfoEndpoint, args[0])
 		res, err := client.Get(urlPath)
