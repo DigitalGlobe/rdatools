@@ -38,5 +38,6 @@ const (
 	StripInfoEndpoint = "https://rda.geobigdata.io/v1/stripMetadata/%s"
 
 	// TokenEndpoint is the GBDX endpoint for dealing with oauth2 token authorization.
-	TokenEndpoint = "https://geobigdata.io/auth/v1/oauth/token"
+	TokenEndpoint         = "https://geobigdata.io/auth/v1/oauth/token"
+	S3CredentialsEndpoint = "https://geobigdata.io/s3creds/v1/prefix"
 )

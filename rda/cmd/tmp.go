@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +56,8 @@ to quickly create a Cobra application.`,
 		}()
 
 		//urlPath := "https://rda.geobigdata.io/v1/template/DigitalGlobeStrip"
-		urlPath := "https://rda.geobigdata.io/v1/template/materialize/formats"
+		//urlPath := "https://rda.geobigdata.io/v1/template/materialize/formats"
+		urlPath := rda.S3CredentialsEndpoint
 		res, err := client.Get(urlPath)
 		if err != nil {
 			return errors.Wrapf(err, "failure requesting %s", urlPath)
