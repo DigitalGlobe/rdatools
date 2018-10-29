@@ -59,7 +59,7 @@ var configureCmd = &cobra.Command{
 			val      *string
 			isSecret bool
 		}{
-			{"GBDX User Name", &config.Username, false},
+			{"GBDX Email", &config.Username, false},
 			{"GBDX Password", &config.Password, true},
 		}
 		for _, configVar := range configVars {
