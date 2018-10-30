@@ -162,16 +162,21 @@ var dgstripBatchCmd = &cobra.Command{
 			}
 		}()
 
-		// Get the metadata and figure out what tiles we want to pull.
-		_, err = rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
-		if err != nil {
-			return err
-		}
+		// If we were given a subwindow, figure out its
+		// mapping to tiles and produce a WKT representation
+		// of that window.
+		if (dgstripFlags.projWin != projectionWindow{} || dgstripFlags.srcWin != sourceWindow{}) {
+			md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
+			if err != nil {
+				return err
+			}
 
-		// tileWindow, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
-		// if err != nil {
-		// 	return err
-		// }
+			tw, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
+			if err != nil {
+				return err
+			}
+			wkt := rda.NewWKTBox(tw.MinTileX, tw.MinTileY, tw.NumXTiles, tw.NumYTiles, *md.TileGeoreferencing())
+		}
 
 		// Submit as a batch job.
 		resp, err := rda.BatchMaterialize("DigitalGlobeStrip", "", rda.Tif, client, qp)
