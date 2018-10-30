@@ -135,7 +135,7 @@ func tileExtents(tiles []TileInfo) (minX, minY, maxX, maxY int) {
 func NewVRT(m *Metadata, tiles []TileInfo) (*VRTDataset, error) {
 	minXTile, minYTile, maxXTile, maxYTile := tileExtents(tiles)
 	numXTiles, numYTiles := maxXTile-minXTile+1, maxYTile-minYTile+1
-	tx, ty := m.TileGeoreferencing().Apply(float64(minXTile), float64(minYTile))
+	tx, ty := m.ImageMetadata.tileGeoTransform.Apply(float64(minXTile), float64(minYTile))
 
 	// The outer container of the VRT.
 	vrt := VRTDataset{

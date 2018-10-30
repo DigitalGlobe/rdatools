@@ -46,7 +46,7 @@ func GraphMetadata(graphID, nodeID string, client *retryablehttp.Client) (*Metad
 
 // TemplateMetadata returns Metadata for the provided RDA template. queryParams can be nil.
 func TemplateMetadata(templateID string, client *retryablehttp.Client, qp url.Values) (*Metadata, error) {
-	u, err := url.Parse(fmt.Sprintf(templateMetadataEnpoint, templateID))
+	u, err := url.Parse(fmt.Sprintf(templateMetadataEndpoint, templateID))
 	if err != nil {
 		return nil, errors.Wrap(err, "couldn't parse template metadata endpoint")
 	}
@@ -108,7 +108,7 @@ func (m *Metadata) Subset(xOff, yOff, xSize, ySize int) (*TileWindow, error) {
 			0, 0, m.ImageMetadata.ImageWidth, m.ImageMetadata.ImageHeight)
 	}
 
-	invTileGT, err := m.TileGeoreferencing().Invert()
+	invTileGT, err := tm.tileGeoTransform.Invert()
 	if err != nil {
 		return nil, err
 	}
@@ -142,14 +142,19 @@ func (m *Metadata) Subset(xOff, yOff, xSize, ySize int) (*TileWindow, error) {
 }
 
 // TileGeoreferencing returns an ImageGeoreferencing but appropriate for for tile coordinates (rather than pixel coordinates).
-func (m *Metadata) TileGeoreferencing() *ImageGeoreferencing {
-	tileGT := m.ImageGeoreferencing
+func (m *Metadata) TileGeoreferencing() ImageGeoreferencing {
+	return m.ImageMetadata.tileGeoTransform
+}
+
+func (m *Metadata) setTileGeoreferencing() {
+	m.ImageMetadata.tileGeoTransform = m.ImageGeoreferencing
+	tileGT := &m.ImageMetadata.tileGeoTransform
+
 	xsize, ysize := float64(m.ImageMetadata.TileXSize), float64(m.ImageMetadata.TileYSize)
 	tileGT.ScaleX *= xsize
 	tileGT.ShearX *= ysize
 	tileGT.ScaleY *= ysize
 	tileGT.ShearY *= xsize
-	return &tileGT
 }
 
 // ImageMetadata holds metadata specific to the image, aka stuff unrelated to the geo aspect of the image.
@@ -168,12 +173,20 @@ type ImageMetadata struct {
 
 // TileWindow contains tile specific metadata.
 type TileWindow struct {
-	NumXTiles int
-	NumYTiles int
-	MinTileX  int
-	MinTileY  int
-	MaxTileX  int
-	MaxTileY  int
+	NumXTiles        int
+	NumYTiles        int
+	MinTileX         int
+	MinTileY         int
+	MaxTileX         int
+	MaxTileY         int
+	tileGeoTransform ImageGeoreferencing
+}
+
+func (t *TileWindow) wkt() string {
+	if t == nil || (*t == TileWindow{}) {
+		return ""
+	}
+	return NewWKTBox(t.MinTileX, t.MinTileY, t.NumXTiles, t.NumYTiles, t.tileGeoTransform).String()
 }
 
 // ImageGeoreferencing holds a geo transform (an affine transform).

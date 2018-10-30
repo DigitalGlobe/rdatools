@@ -26,7 +26,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"os/signal"
 	"path"
@@ -39,20 +38,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var dgstripFlags struct {
-	crs   coordRefSys
-	acomp bool
-	toa   bool
-	gsd   float64
-	bt    bandType
-	bands bandCombo
-	dra   bool
-
-	srcWin  sourceWindow
-	projWin projectionWindow
-
-	maxconcurr uint64
-}
+const dgstripTemplateName = "DigitalGlobeStrip"
 
 // dgstripCmd represents the dgstrip command
 var dgstripCmd = &cobra.Command{
@@ -60,11 +46,6 @@ var dgstripCmd = &cobra.Command{
 	Short: "Realize tiles of a DigitalGlobe strip from RDA",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get our parameters sorted out.
-		catID, vrtPath := args[0], args[1]
-		params := map[string]string{"catalogId": catID}
-		qp := dgstripQueryParams(params)
-
 		// Setup our context to handle cancellation and listen for signals.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -91,30 +72,30 @@ var dgstripCmd = &cobra.Command{
 			}
 		}()
 
-		// Figure out the window tile sizes requested.
-		md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
+		// Get the metadata and figure out what RDA tiles need to be downloaded.
+		catID, vrtPath := args[0], args[1]
+		template := rda.NewTemplate(dgstripTemplateName, client, dgstripTemplateOptions(catID)...)
+		md, err := template.Metadata()
 		if err != nil {
 			return err
 		}
-
 		tileWindow, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
 		if err != nil {
 			return err
 		}
+		rda.WithWindow(*tileWindow)(template)
 
 		// Get the tiles.
 		bar := pb.StartNew(tileWindow.NumXTiles * tileWindow.NumYTiles)
+		rda.WithProgressFunc(bar.Increment)(template)
 
-		realizer := rda.Realizer{
-			Client:      client,
-			NumParallel: int(dgstripFlags.maxconcurr),
-		}
 		tileDir := vrtPath[:len(vrtPath)-len(path.Ext(vrtPath))]
 		tStart := time.Now()
-		tiles, err := realizer.RealizeTemplate(ctx, "DigitalGlobeStrip", qp, *tileWindow, tileDir, bar.Increment)
+		tiles, err := template.Realize(ctx, tileDir)
 		if err != nil {
 			return err
 		}
+
 		bar.FinishPrint(fmt.Sprintf("Tile retrieval took %s", time.Since(tStart)))
 		if len(tiles) < 1 {
 			return err
@@ -146,10 +127,6 @@ var dgstripBatchCmd = &cobra.Command{
 	Short: "Realize images of a DigitalGlobe strip from RDA via RDA batch materialization",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get our parameters sorted out.
-		params := map[string]string{"catalogId": args[0]}
-		qp := dgstripQueryParams(params)
-
 		// The http client.
 		ctx := context.Background()
 		client, writeConfig, err := newClient(ctx)
@@ -162,24 +139,26 @@ var dgstripBatchCmd = &cobra.Command{
 			}
 		}()
 
-		// If we were given a subwindow, figure out its
-		// mapping to tiles and produce a WKT representation
-		// of that window.
-		if (dgstripFlags.projWin != projectionWindow{} || dgstripFlags.srcWin != sourceWindow{}) {
-			md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
-			if err != nil {
-				return err
-			}
+		// Get the metadata and figure out what RDA tiles need to be downloaded.
+		catID := args[0]
+		template := rda.NewTemplate(dgstripTemplateName, client, dgstripTemplateOptions(catID)...)
 
-			tw, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
+		// If we were given a subwindow, figure out its
+		// mapping to RDA tiles.
+		if (dgstripFlags.projWin != projectionWindow{} || dgstripFlags.srcWin != sourceWindow{}) {
+			md, err := template.Metadata()
 			if err != nil {
 				return err
 			}
-			wkt := rda.NewWKTBox(tw.MinTileX, tw.MinTileY, tw.NumXTiles, tw.NumYTiles, *md.TileGeoreferencing())
+			tileWindow, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
+			if err != nil {
+				return err
+			}
+			rda.WithWindow(*tileWindow)(template)
 		}
 
 		// Submit as a batch job.
-		resp, err := rda.BatchMaterialize("DigitalGlobeStrip", "", rda.Tif, client, qp)
+		resp, err := template.BatchRealize(ctx, rda.Tif)
 		if err != nil {
 			return err
 		}
@@ -190,13 +169,9 @@ var dgstripBatchCmd = &cobra.Command{
 
 var dgstripMetadataCmd = &cobra.Command{
 	Use:   "metadata <catalog-id>",
-	Short: "Get metadata desribing a realization of a DigitalGlobe strip from RDA",
+	Short: "Get metadata describing a realization of a DigitalGlobe strip from RDA",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-
-		params := map[string]string{"catalogId": args[0]}
-		qp := dgstripQueryParams(params)
-
 		// The http client.
 		ctx := context.Background()
 		client, writeConfig, err := newClient(ctx)
@@ -209,7 +184,10 @@ var dgstripMetadataCmd = &cobra.Command{
 			}
 		}()
 
-		md, err := rda.TemplateMetadata("DigitalGlobeStrip", client, qp)
+		// Get the metadata.
+		catID := args[0]
+		template := rda.NewTemplate(dgstripTemplateName, client, dgstripTemplateOptions(catID)...)
+		md, err := template.Metadata()
 		if err != nil {
 			return err
 		}
@@ -218,41 +196,51 @@ var dgstripMetadataCmd = &cobra.Command{
 	},
 }
 
-func dgstripQueryParams(params map[string]string) url.Values {
-	qp := make(url.Values)
-	for key, val := range params {
-		qp.Add(key, val)
+func dgstripTemplateOptions(catalogID string) []rda.TemplateOption {
+	options := []rda.TemplateOption{
+		rda.AddParameter("catalogId", catalogID),
+		rda.AddParameter("crs", dgstripFlags.crs.String()),
+		rda.AddParameter("bands", dgstripFlags.bt.String()),
+		rda.AddParameter("bandSelection", dgstripFlags.bands.String()),
 	}
-
-	qp.Add("crs", dgstripFlags.crs.String())
 
 	switch {
 	case dgstripFlags.acomp && dgstripFlags.toa:
-		qp.Add("correctionType", "Acomp")
-		qp.Add("fallbackToTOA", "true")
+		options = append(options, rda.AddParameter("correctionType", "Acomp"), rda.AddParameter("fallbackToTOA", "true"))
 	case dgstripFlags.acomp:
-		qp.Add("correctionType", "Acomp")
-		qp.Add("fallbackToTOA", "false")
+		options = append(options, rda.AddParameter("correctionType", "Acomp"), rda.AddParameter("fallbackToTOA", "false"))
 	case dgstripFlags.toa:
-		qp.Add("correctionType", "TOAReflectance")
+		options = append(options, rda.AddParameter("correctionType", "TOAReflectance"))
 	default:
-		qp.Add("correctionType", "DN")
+		options = append(options, rda.AddParameter("correctionType", "DN"))
 	}
 
 	if dgstripFlags.gsd > 0.0 {
-		qp.Add("GSD", fmt.Sprint(dgstripFlags.gsd))
+		options = append(options, rda.AddParameter("GSD", fmt.Sprint(dgstripFlags.gsd)))
 	}
-
-	qp.Add("bands", dgstripFlags.bt.String())
-
-	qp.Add("bandSelection", dgstripFlags.bands.String())
 
 	if dgstripFlags.dra {
-		qp.Add("draType", "HistogramDRA")
+		options = append(options, rda.AddParameter("draType", "HistogramDRA"))
 	} else {
-		qp.Add("draType", "None")
+		options = append(options, rda.AddParameter("draType", "None"))
 	}
-	return qp
+
+	return options
+}
+
+var dgstripFlags struct {
+	crs   coordRefSys
+	acomp bool
+	toa   bool
+	gsd   float64
+	bt    bandType
+	bands bandCombo
+	dra   bool
+
+	srcWin  sourceWindow
+	projWin projectionWindow
+
+	maxconcurr uint64
 }
 
 func init() {

@@ -23,7 +23,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
+	"github.com/DigitalGlobe/rdatools/rda/pkg/gbdx"
 	"github.com/hashicorp/go-retryablehttp"
 	"golang.org/x/oauth2"
 )
@@ -55,7 +55,7 @@ func newTokenSource(ctx context.Context) (oauth2.TokenSource, func() error, erro
 	}
 
 	oauth2Conf := &oauth2.Config{
-		Endpoint: oauth2.Endpoint{TokenURL: rda.TokenEndpoint},
+		Endpoint: oauth2.Endpoint{TokenURL: gbdx.TokenEndpoint},
 	}
 
 	// Configure the token source.
