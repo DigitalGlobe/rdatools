@@ -30,6 +30,13 @@ import (
 
 const configName = "credentials"
 
+// these are populated by goreleaser when you build a release with that tool.
+var (
+	version = "head"
+	commit  = "head"
+	date    = "none"
+)
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use: "rda",
@@ -45,6 +52,7 @@ rda authorization supports "profiles" if you have more than one set of
 credentials.  By default, "default" is used if you don't specify a
 particual profile via the --profile flag.
 `,
+	Version: fmt.Sprintf("%v, commit %v, built at %v", version, commit, date),
 	// RunE: func(cmd *cobra.Command, args []string) error {
 	// 	viper.Debug()
 	// 	c, err := newConfig()

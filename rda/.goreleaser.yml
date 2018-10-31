@@ -16,6 +16,8 @@ builds:
     - windows
   goarch:
       - amd64
+  ldflags:
+    - -s -w -X github.com/DigitalGlobe/rdatools/rda/cmd.version={{.Version}} -X github.com/DigitalGlobe/rdatools/rda/cmd.commit={{.Commit}} -X github.com/DigitalGlobe/rdatools/rda/cmd.date={{.Date}}      
 archive:
   replacements:
     darwin: Darwin
