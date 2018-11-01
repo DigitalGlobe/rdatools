@@ -183,7 +183,7 @@ func (t *Template) BatchRealize(ctx context.Context, format BatchFormat) (*Batch
 
 // Realize downloads all the tiles from RDA described by the template and its parameters to tileDir.
 func (t *Template) Realize(ctx context.Context, tileDir string) ([]TileInfo, error) {
-	if err := os.MkdirAll(tileDir, 0777); err != nil {
+	if err := os.MkdirAll(tileDir, 0775); err != nil {
 		return nil, err
 	}
 
