@@ -21,11 +21,13 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/gbdx"
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
@@ -36,11 +38,17 @@ import (
 
 // jobstatusCmd represents the jobstatus command
 var jobstatusCmd = &cobra.Command{
-	Use:   "jobstatus <job id>",
-	Short: "get the status an RDA batch materialization job",
-	Args:  cobra.ExactArgs(1),
+	Use:   "jobstatus <job id>*",
+	Short: "get the status an RDA batch materialization job(s)",
+	Long:  `note that you can list job ids as arguments on the command line, or pipe them in from another source`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		jobID := args[0]
+		// Read job ids from stdin (line seperated) if given no arguments.
+		if len(args) == 0 {
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				args = append(args, scanner.Text())
+			}
+		}
 
 		ctx := context.Background()
 		client, writeConfig, err := newClient(ctx)
@@ -53,8 +61,51 @@ var jobstatusCmd = &cobra.Command{
 			}
 		}()
 
-		job, err := rda.FetchBatchStatus(jobID, client)
-		return json.NewEncoder(os.Stdout).Encode(job)
+		numWorkers := 8
+		if len(args) < numWorkers {
+			numWorkers = len(args)
+		}
+		jobIDsIn := make(chan string)
+		jobsOut := make(chan *rda.BatchResponse)
+
+		// Send the job ids along the channel to be processed.
+		go func(jobIDsIn chan<- string) {
+			defer close(jobIDsIn)
+			for _, job := range args {
+				jobIDsIn <- job
+			}
+		}(jobIDsIn)
+
+		// Start the workers that are processing the job ids.
+		wg := sync.WaitGroup{}
+		for i := 0; i < numWorkers; i++ {
+			wg.Add(1)
+			go func(jobIDsIn <-chan string, jobsOut chan<- *rda.BatchResponse) {
+				defer wg.Done()
+				for jobID := range jobIDsIn {
+					job, err := rda.FetchBatchStatus(jobID, client)
+					if err != nil {
+						log.Printf("error statusing job id %s, err: %v", jobID, err)
+						continue
+					}
+					jobsOut <- job
+				}
+			}(jobIDsIn, jobsOut)
+		}
+
+		// When the workers wrap up, close the output channel.
+		go func() {
+			wg.Wait()
+			close(jobsOut)
+		}()
+
+		// Read all the responses from the processed job ids.
+		jobs := []*rda.BatchResponse{}
+		for job := range jobsOut {
+			jobs = append(jobs, job)
+		}
+
+		return json.NewEncoder(os.Stdout).Encode(jobs)
 	},
 }
 
