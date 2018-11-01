@@ -18,48 +18,38 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package cmd
+package gbdx
 
 import (
 	"encoding/json"
-	"log"
-	"os"
-
-	"context"
-
-	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
-	"github.com/spf13/cobra"
+	"testing"
 )
 
-// metadataCmd represents the metadata command
-var metadataCmd = &cobra.Command{
-	Hidden: true,
-	Use:    "metadata <rda-graph-id> <rda-node-id>",
-	Short:  "return the metadata for the provided RDA graph and node",
-	//Long:  `return the metadata for the provided RDA graph and node`,
-	Args: cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		graphID, nodeID := args[0], args[1]
-		ctx := context.Background()
-		client, writeConfig, err := newClient(ctx)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if err := writeConfig(); err != nil {
-				log.Printf("on exit, received an error when writing configuration, err: %v", err)
-			}
-		}()
+var gbdxS3CredResp = `{
+  "S3_secret_key": "secret-key",
+  "prefix": "prefix",
+  "bucket": "bucket",
+  "S3_access_key": "access-key",
+  "S3_session_token": "session-token"
+}`
 
-		md, err := rda.GraphMetadata(graphID, nodeID, client)
-		if err != nil {
-			return err
-		}
+func TestS3CredUnmarshal(t *testing.T) {
+	awsInfo := awsInformation{}
+	if err := json.Unmarshal([]byte(gbdxS3CredResp), &awsInfo); err != nil {
+		t.Fatal(err)
+	}
+	expected := awsInformation{
+		SecretAccessKey: "secret-key",
+		AccessKeyID:     "access-key",
+		SessionToken:    "session-token",
+		CustomerDataLocation: CustomerDataLocation{
+			Bucket: "bucket",
+			Prefix: "prefix",
+		},
+	}
 
-		return json.NewEncoder(os.Stdout).Encode(md)
-	},
-}
+	if awsInfo != expected {
+		t.Fatalf("%+v != %+v", awsInfo, expected)
+	}
 
-func init() {
-	rootCmd.AddCommand(metadataCmd)
 }

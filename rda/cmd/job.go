@@ -25,15 +25,19 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"strings"
 
+	"github.com/DigitalGlobe/rdatools/rda/pkg/gbdx"
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/spf13/cobra"
 )
 
-// jobCmd represents the job command
-var jobCmd = &cobra.Command{
-	Use:   "job <job id>",
-	Short: "status an RDA batch materialization job",
+// jobstatusCmd represents the jobstatus command
+var jobstatusCmd = &cobra.Command{
+	Use:   "jobstatus <job id>",
+	Short: "get the status an RDA batch materialization job",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jobID := args[0]
@@ -54,6 +58,49 @@ var jobCmd = &cobra.Command{
 	},
 }
 
+// jobsdoneCmd represents the jobsdone command
+var jobsdoneCmd = &cobra.Command{
+	Use:   "jobsdone",
+	Short: "returns the list of completed RDA batch materialization job ids",
+	Args:  cobra.ExactArgs(0),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
+
+		sess, s3loc, err := gbdx.NewAWSSession(client)
+		if err != nil {
+			return err
+		}
+
+		svc := s3.New(sess)
+		jobIDs := []string{}
+		if err := svc.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
+			Bucket:    &s3loc.Bucket,
+			Prefix:    aws.String(strings.Join([]string{s3loc.Prefix, "rda/"}, "/")),
+			Delimiter: aws.String("/"),
+		}, func(p *s3.ListObjectsV2Output, lastPage bool) bool {
+			for _, o := range p.CommonPrefixes {
+				keys := strings.Split(aws.StringValue(o.Prefix), "/")
+				jobIDs = append(jobIDs, keys[len(keys)-2])
+			}
+			return true
+		}); err != nil {
+			return err
+		}
+
+		return json.NewEncoder(os.Stdout).Encode(jobIDs)
+	},
+}
+
 func init() {
-	rootCmd.AddCommand(jobCmd)
+	rootCmd.AddCommand(jobstatusCmd)
+	rootCmd.AddCommand(jobsdoneCmd)
 }

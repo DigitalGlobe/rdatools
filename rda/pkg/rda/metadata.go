@@ -22,13 +22,9 @@ package rda
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"math"
-	"net/http"
-	"net/url"
 
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
 
@@ -36,24 +32,6 @@ import (
 type Metadata struct {
 	ImageMetadata       ImageMetadata
 	ImageGeoreferencing ImageGeoreferencing
-}
-
-// GraphMetadata returns Metadata for the provided RDA graphID and nodeID.
-func GraphMetadata(graphID, nodeID string, client *retryablehttp.Client) (*Metadata, error) {
-	ep := fmt.Sprintf(graphMetadataEnpoint, graphID, nodeID)
-	return fetchMetadata(ep, client)
-}
-
-// TemplateMetadata returns Metadata for the provided RDA template. queryParams can be nil.
-func TemplateMetadata(templateID string, client *retryablehttp.Client, qp url.Values) (*Metadata, error) {
-	u, err := url.Parse(fmt.Sprintf(templateMetadataEndpoint, templateID))
-	if err != nil {
-		return nil, errors.Wrap(err, "couldn't parse template metadata endpoint")
-	}
-	u.RawQuery = qp.Encode()
-	ep := u.String()
-
-	return fetchMetadata(ep, client)
 }
 
 // Error represents an error we've recieved from the RDA backend.
@@ -73,22 +51,6 @@ func ResponseToError(reader io.Reader, msg string) error {
 		return errors.New(msg)
 	}
 	return errors.Wrap(rdaerr, msg)
-}
-
-func fetchMetadata(endpoint string, client *retryablehttp.Client) (*Metadata, error) {
-	res, err := client.Get(endpoint)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to form GET for fetching metadata")
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, ResponseToError(res.Body, fmt.Sprintf("failed fetching metadata from %s, HTTP Status: %s", endpoint, res.Status))
-	}
-
-	md := Metadata{}
-	err = json.NewDecoder(res.Body).Decode(&md)
-	return &md, err
 }
 
 // Subset returns a TileWindow holding the tiles that contain the

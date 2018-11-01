@@ -22,13 +22,13 @@ package cmd
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"log"
-	"net/http"
-	"os"
+	"strings"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/gbdx"
-	"github.com/pkg/errors"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/spf13/cobra"
 )
 
@@ -57,18 +57,34 @@ to quickly create a Cobra application.`,
 
 		//urlPath := "https://rda.geobigdata.io/v1/template/DigitalGlobeStrip"
 		//urlPath := "https://rda.geobigdata.io/v1/template/materialize/formats"
-		urlPath := gbdx.S3CredentialsEndpoint
-		res, err := client.Get(urlPath)
+
+		// res, err := client.Get(urlPath)
+		// if err != nil {
+		// 	return errors.Wrapf(err, "failure requesting %s", urlPath)
+		// }
+		// defer res.Body.Close()
+		// if res.StatusCode != http.StatusOK {
+		// 	return errors.Errorf("failed fetching operator info from %s, HTTP Status: %s", urlPath, res.Status)
+		// }
+		//_, err = io.Copy(os.Stdout, res.Body)
+		// return errors.Wrap(err, "failed copying response body to stdout")
+
+		sess, s3loc, err := gbdx.NewAWSSession(client)
 		if err != nil {
-			return errors.Wrapf(err, "failure requesting %s", urlPath)
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			return errors.Errorf("failed fetching operator info from %s, HTTP Status: %s", urlPath, res.Status)
+			return err
 		}
 
-		_, err = io.Copy(os.Stdout, res.Body)
-		return errors.Wrap(err, "failed copying response body to stdout")
+		svc := s3.New(sess)
+		s3Out, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{
+			Bucket:    &s3loc.Bucket,
+			Prefix:    aws.String(strings.Join([]string{s3loc.Prefix, "rda/"}, "/")),
+			Delimiter: aws.String("/"),
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(s3Out)
+		return nil
 	},
 }
 

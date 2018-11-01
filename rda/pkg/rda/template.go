@@ -125,10 +125,12 @@ func (t *Template) Metadata() (*Metadata, error) {
 	}
 
 	md := Metadata{}
-	err = json.NewDecoder(res.Body).Decode(&md)
+	if err := json.NewDecoder(res.Body).Decode(&md); err != nil {
+		return nil, errors.Wrap(err, "failed parsing template metadata from response")
+	}
 	md.setTileGeoreferencing()
 
-	return &md, err
+	return &md, nil
 }
 
 // BatchRealize asks RDA's batch materialization to generate the imagery described by the template and its parameters.
