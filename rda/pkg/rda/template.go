@@ -253,7 +253,7 @@ func (t *Template) realize(ctx context.Context, tileDir string) ([]TileInfo, err
 	// wait until all works shut down, so we should nab all
 	// successfully downloaded tiles before returning.
 	completedTiles := []TileInfo{}
-	var jobserr *realizeError
+	var jobserr *rdaErrors
 	for job := range jobsOut {
 		if job.err != nil {
 			jobserr = jobserr.addError(job.err)
@@ -339,25 +339,24 @@ type TileInfo struct {
 	YTile int
 }
 
-type realizeError struct {
+type rdaErrors struct {
 	errors []error
 }
 
-func (r *realizeError) addError(err error) *realizeError {
+func (r *rdaErrors) addError(err error) *rdaErrors {
 	// Don't bother reporting context cancellation as an error.
 	if errors.Cause(err).Error() == "context canceled" {
 		return r
 	}
 
 	if r == nil {
-		return &realizeError{errors: []error{err}}
+		return &rdaErrors{errors: []error{err}}
 	}
 	r.errors = append(r.errors, err)
-
 	return r
 }
 
-func (r *realizeError) Error() string {
+func (r *rdaErrors) Error() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%d error(s) during realization:\n", len(r.errors))
 	for i, err := range r.errors {

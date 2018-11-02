@@ -21,11 +21,13 @@
 package rda
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"encoding/json"
@@ -108,6 +110,14 @@ type BatchRequest struct {
 	EmailAddress    string            `json:"emailAddress,omitempty"`
 }
 
+// ImageReference hold the portion of RDA's batch materialization POST
+// describing the template we're trying to render.
+type ImageReference struct {
+	TemplateID string            `json:"templateId"`
+	NodeID     string            `json:"nodeId,omitempty"`
+	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
 // BatchResponse is the HTTP body returned by RDA when POSTing a
 // batch materialization request.
 type BatchResponse struct {
@@ -185,28 +195,76 @@ func (et *EpochDuration) UnmarshalJSON(b []byte) (err error) {
 	return nil
 }
 
-// ImageReference hold the portion of RDA's batch materialization POST
-// describing the template we're trying to render.
-type ImageReference struct {
-	TemplateID string            `json:"templateId"`
-	NodeID     string            `json:"nodeId,omitempty"`
-	Parameters map[string]string `json:"parameters,omitempty"`
+type batchStatusResponse struct {
+	resp *BatchResponse
+	err  error
 }
 
-// Batch drives RDA batch materialization requests.
-type Batch struct {
-	tempateID      string
-	templateParams url.Values
-	nodeID         string
+// FetchBatchStatus returns the status of RDA batch materialization jobs.
+func FetchBatchStatus(ctx context.Context, client *retryablehttp.Client, jobIDs ...string) ([]*BatchResponse, error) {
+	numParallel := 4 * runtime.NumCPU()
+	if len(jobIDs) < numParallel {
+		numParallel = len(jobIDs)
+	}
+	jobIDsIn := make(chan string)
+	jobsOut := make(chan *batchStatusResponse)
 
-	format BatchFormat
-	client *retryablehttp.Client
+	// Send the job ids along the channel to be processed.
+	go func(jobIDsIn chan<- string) {
+		defer close(jobIDsIn)
+		for _, job := range jobIDs {
+			select {
+			case jobIDsIn <- job:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}(jobIDsIn)
+
+	// Start the workers that are processing the job ids.
+	wg := sync.WaitGroup{}
+	for i := 0; i < numParallel; i++ {
+		wg.Add(1)
+		go func(jobIDsIn <-chan string, jobsOut chan<- *batchStatusResponse) {
+			defer wg.Done()
+			for jobID := range jobIDsIn {
+				resp, err := batchStatusJob(ctx, client, jobID)
+				jobsOut <- &batchStatusResponse{resp: resp, err: err}
+			}
+		}(jobIDsIn, jobsOut)
+	}
+
+	// When the workers wrap up, close the output channel.
+	go func() {
+		wg.Wait()
+		close(jobsOut)
+	}()
+
+	// Read all the responses from the processed job ids.
+	jobs := []*BatchResponse{}
+	var jobserr *rdaErrors
+	for jobResp := range jobsOut {
+		if jobResp.err != nil {
+			jobserr.addError(jobResp.err)
+		} else {
+			jobs = append(jobs, jobResp.resp)
+		}
+	}
+	if jobserr != nil {
+		return nil, jobserr
+	}
+	return jobs, nil
 }
 
-// FetchBatchStatus returns the status of an RDA batch materialization job.
-func FetchBatchStatus(jobID string, client *retryablehttp.Client) (*BatchResponse, error) {
+func batchStatusJob(ctx context.Context, client *retryablehttp.Client, jobID string) (*BatchResponse, error) {
 	ep := fmt.Sprintf(templateJobEndpoint, jobID)
-	res, err := client.Get(ep)
+	req, err := retryablehttp.NewRequest("GET", ep, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed forming request for batch job id %s", ep)
+	}
+	req = req.WithContext(ctx)
+
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to form GET for fetching job status")
 	}

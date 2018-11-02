@@ -20,8 +20,8 @@
 
 package gbdx
 
-const (
+var (
 	// TokenEndpoint is the GBDX endpoint for dealing with oauth2 token authorization.
 	TokenEndpoint         = "https://geobigdata.io/auth/v1/oauth/token"
-	S3CredentialsEndpoint = "https://geobigdata.io/s3creds/v1/prefix"
+	s3CredentialsEndpoint = "https://geobigdata.io/s3creds/v1/prefix"
 )

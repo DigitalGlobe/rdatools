@@ -27,24 +27,26 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
-	"path/filepath"
-	"strings"
-	"sync"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/gbdx"
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/cheggaaa/pb"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
-// jobstatusCmd represents the jobstatus command
-var jobstatusCmd = &cobra.Command{
-	Use:   "jobstatus <job id>*",
+var jobCmd = &cobra.Command{
+	Use:   "job",
+	Short: "commands (status, download, etc) related to RDA batch materialization job",
+}
+
+// statusCmd represents the status command
+var statusCmd = &cobra.Command{
+	Use:   "status <job id>*",
 	Short: "get the status an RDA batch materialization job(s)",
 	Long:  `note that you can list job ids as arguments on the command line, or pipe them in from another source`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -56,7 +58,22 @@ var jobstatusCmd = &cobra.Command{
 			}
 		}
 
-		ctx := context.Background()
+		// Setup our context to handle cancellation and listen for signals.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			sigs := make(chan os.Signal, 1)
+			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+			select {
+			case s := <-sigs:
+				log.Printf("received a shutdown signal %s, winding down", s)
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+
+		// Our HTTP client.
 		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
@@ -67,58 +84,21 @@ var jobstatusCmd = &cobra.Command{
 			}
 		}()
 
-		numWorkers := 8
-		if len(args) < numWorkers {
-			numWorkers = len(args)
-		}
-		jobIDsIn := make(chan string)
-		jobsOut := make(chan *rda.BatchResponse)
-
-		// Send the job ids along the channel to be processed.
-		go func(jobIDsIn chan<- string) {
-			defer close(jobIDsIn)
-			for _, job := range args {
-				jobIDsIn <- job
-			}
-		}(jobIDsIn)
-
-		// Start the workers that are processing the job ids.
-		wg := sync.WaitGroup{}
-		for i := 0; i < numWorkers; i++ {
-			wg.Add(1)
-			go func(jobIDsIn <-chan string, jobsOut chan<- *rda.BatchResponse) {
-				defer wg.Done()
-				for jobID := range jobIDsIn {
-					job, err := rda.FetchBatchStatus(jobID, client)
-					if err != nil {
-						log.Printf("error statusing job id %s, err: %v", jobID, err)
-						continue
-					}
-					jobsOut <- job
-				}
-			}(jobIDsIn, jobsOut)
-		}
-
-		// When the workers wrap up, close the output channel.
-		go func() {
-			wg.Wait()
-			close(jobsOut)
-		}()
-
-		// Read all the responses from the processed job ids.
-		jobs := []*rda.BatchResponse{}
-		for job := range jobsOut {
-			jobs = append(jobs, job)
+		// Fetch all the job statuses.
+		jobs, err := rda.FetchBatchStatus(ctx, client, args...)
+		if err != nil {
+			return err
 		}
 
 		return json.NewEncoder(os.Stdout).Encode(jobs)
 	},
 }
 
-// jobsdoneCmd represents the jobsdone command
-var jobsdoneCmd = &cobra.Command{
-	Use:   "jobsdone",
-	Short: "returns the list of completed RDA batch materialization job ids",
+// downloadableCmd represents the downloadable command
+var downloadableCmd = &cobra.Command{
+	Use:   "downloadable",
+	Short: "returns the list of RDA batch materialization job ids found in the GBDX customer data bucket",
+	Long:  `returns the list of RDA batch materialization job ids found in the GBDX customer data bucket; these are available for download`,
 	Args:  cobra.ExactArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
@@ -132,41 +112,42 @@ var jobsdoneCmd = &cobra.Command{
 			}
 		}()
 
-		sess, s3loc, err := gbdx.NewAWSSession(client)
+		accessor, err := gbdx.NewS3Accessor(client)
 		if err != nil {
 			return err
 		}
-
-		svc := s3.New(sess)
-		jobIDs := []string{}
-		if err := svc.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
-			Bucket:    &s3loc.Bucket,
-			Prefix:    aws.String(strings.Join([]string{s3loc.Prefix, "rda/"}, "/")),
-			Delimiter: aws.String("/"),
-		}, func(p *s3.ListObjectsV2Output, lastPage bool) bool {
-			for _, o := range p.CommonPrefixes {
-				keys := strings.Split(aws.StringValue(o.Prefix), "/")
-				jobIDs = append(jobIDs, keys[len(keys)-2])
-			}
-			return true
-		}); err != nil {
+		jobIDs, err := accessor.RDABatchJobPrefixes(ctx)
+		if err != nil {
 			return err
 		}
-
 		return json.NewEncoder(os.Stdout).Encode(jobIDs)
 	},
 }
 
-// jobdownload represents the jobdownload command
-var jobdownloadCmd = &cobra.Command{
-	Use:   "jobdownload <outdir> <job id>",
+// download represents the download command
+var downloadCmd = &cobra.Command{
+	Use:   "download <outdir> <job id>",
 	Short: "download RDA batch job artifacts to the output directory",
 	Long:  `download RDA batch job artifacts to the output directory; ourdir will be created if it doesn't exist`,
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		outDir, jobID := args[0], args[1]
 
-		ctx := context.Background()
+		// Setup our context to handle cancellation and listen for signals.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			sigs := make(chan os.Signal, 1)
+			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+			select {
+			case s := <-sigs:
+				log.Printf("received a shutdown signal %s, winding down", s)
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+
 		client, writeConfig, err := newClient(ctx)
 		if err != nil {
 			return err
@@ -177,71 +158,160 @@ var jobdownloadCmd = &cobra.Command{
 			}
 		}()
 
-		job, err := rda.FetchBatchStatus(jobID, client)
+		jobs, err := rda.FetchBatchStatus(ctx, client, jobID)
 		if err != nil {
 			return err
 		}
-		if job.Status.Status != "complete" {
-			return errors.Errorf("cannot download a job that isn't complete, job status is %q", job.Status.Status)
+		if jobs[0].Status.Status != "complete" {
+			return errors.Errorf("cannot download a job that isn't complete, job status is %q", jobs[0].Status.Status)
 		}
 
-		sess, s3loc, err := gbdx.NewAWSSession(client)
+		accessor, err := gbdx.NewS3Accessor(client)
 		if err != nil {
 			return err
 		}
-		objects, err := getRDAJobObjects(ctx, sess, s3loc, jobID)
-		if err != nil {
-			return errors.Wrapf(err, "failed listing obects for download related to RDA job id %q", jobID)
-		}
 
-		if err := os.MkdirAll(outDir, 0775); err != nil {
+		numArtifacts, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
+		if err != nil {
 			return err
 		}
-
-		downloader := s3manager.NewDownloader(sess)
-		for _, objIn := range objects {
-			_, suffix := path.Split(*objIn.Key)
-			file := filepath.Join(outDir, suffix)
-
-			fd, err := os.Create(file)
-			if err != nil {
-				return errors.Wrapf(err, "failed creatingf file to hold rda output from s3")
+		bar := pb.StartNew(numArtifacts)
+		tStart := time.Now()
+		gbdx.WithProgressFunc(bar.Increment)(accessor)
+		numDL, err := dlFunc()
+		if err != nil {
+			bar.FinishPrint("Failed downloading all artifacts; rerun the command to pick up where you left off.")
+			srcErr := errors.Cause(err)
+			if aerr, ok := srcErr.(awserr.Error); ok {
+				srcErr = aerr.OrigErr()
 			}
-
-			err = func() error {
-				defer fd.Close()
-				log.Printf("downloading %s to %s\n", fmt.Sprintf("s3://%s/%s", *objIn.Bucket, *objIn.Key), file)
-				_, err := downloader.DownloadWithContext(ctx, fd, objIn)
+			if srcErr.Error() != "context canceled" {
 				return err
-			}()
+			}
+			return nil
+		}
+		bar.FinishPrint(fmt.Sprintf("S3 download of %d artifacts took %s", numDL, time.Since(tStart)))
+		return nil
+	},
+}
+
+// watch represents the watch command
+var watchCmd = &cobra.Command{
+	Use:   "watch <outdir> <job id>",
+	Short: "watch RDA batch job id for completion, greedily downloading artifacts to the output directory as they arrive",
+	Long:  `download RDA batch job artifacts to the output directory; ourdir will be created if it doesn't exist`,
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		outDir, jobID := args[0], args[1]
+
+		// Setup our context to handle cancellation and listen for signals.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			sigs := make(chan os.Signal, 1)
+			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+			select {
+			case s := <-sigs:
+				log.Printf("received a shutdown signal %s, winding down", s)
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+
+		client, writeConfig, err := newClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err) // TODO, handle more gracefully.
+			}
+		}()
+
+	Polling:
+		for {
+			jobs, err := rda.FetchBatchStatus(ctx, client, jobID)
 			if err != nil {
-				return errors.Wrapf(err, "failed downloading rda output from s3")
+				return err
+			}
+			switch status := jobs[0].Status.Status; status {
+			case "complete":
+				break Polling
+			case "processing":
+			default:
+				return errors.Errorf("job id %s has status %s, exiting", jobID, status)
+			}
+
+			// Download anything we see in the bucket for this job that we don't have.
+			accessor, err := gbdx.NewS3Accessor(client)
+			if err != nil {
+				return err
+			}
+
+			_, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
+			if err != nil {
+				return err
+			}
+			numDL, err := dlFunc()
+			if err != nil {
+				log.Printf("Failed downloading all artifacts; rerun the command to pick up where you left off.")
+				srcErr := errors.Cause(err)
+				if aerr, ok := srcErr.(awserr.Error); ok {
+					srcErr = aerr.OrigErr()
+				}
+				if srcErr.Error() != "context canceled" {
+					return err
+				}
+				return nil
+			}
+			if numDL > 0 {
+				log.Printf("downloaded %d artifacts", numDL)
+			}
+
+			select {
+			case <-time.After(1 * time.Minute):
+			case <-ctx.Done():
+				log.Printf("exited before downloading all artifacts; rerun the command to pick up where you left off.")
+				return nil
 			}
 		}
+
+		// Final download check on successful finish.
+		accessor, err := gbdx.NewS3Accessor(client)
+		if err != nil {
+			return err
+		}
+
+		numArtifacts, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
+		if err != nil {
+			return err
+		}
+		bar := pb.StartNew(numArtifacts)
+		tStart := time.Now()
+		gbdx.WithProgressFunc(bar.Increment)(accessor)
+		numDL, err := dlFunc()
+		if err != nil {
+			bar.FinishPrint("Failed downloading all artifacts; rerun the command to pick up where you left off.")
+			srcErr := errors.Cause(err)
+			if aerr, ok := srcErr.(awserr.Error); ok {
+				srcErr = aerr.OrigErr()
+			}
+			if srcErr.Error() != "context canceled" {
+				return err
+			}
+			return nil
+		}
+		bar.FinishPrint(fmt.Sprintf("S3 download of %d artifacts took %s", numDL, time.Since(tStart)))
 
 		return nil
 	},
 }
 
-func getRDAJobObjects(ctx context.Context, sess *session.Session, s3loc *gbdx.CustomerDataLocation, jobID string) ([]*s3.GetObjectInput, error) {
-	svc := s3.New(sess)
-	objects := []*s3.GetObjectInput{}
-	if err := svc.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
-		Bucket: &s3loc.Bucket,
-		Prefix: aws.String(strings.Join([]string{s3loc.Prefix, "rda", jobID}, "/")),
-	}, func(p *s3.ListObjectsV2Output, lastPage bool) bool {
-		for _, o := range p.Contents {
-			objects = append(objects, &s3.GetObjectInput{Bucket: &s3loc.Bucket, Key: o.Key})
-		}
-		return true
-	}); err != nil {
-		return nil, err
-	}
-	return objects, nil
-}
-
 func init() {
-	rootCmd.AddCommand(jobstatusCmd)
-	rootCmd.AddCommand(jobsdoneCmd)
-	rootCmd.AddCommand(jobdownloadCmd)
+	rootCmd.AddCommand(jobCmd)
+	jobCmd.AddCommand(statusCmd)
+	jobCmd.AddCommand(downloadableCmd)
+	jobCmd.AddCommand(downloadCmd)
+	jobCmd.AddCommand(watchCmd)
 }

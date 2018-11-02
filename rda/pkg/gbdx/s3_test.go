@@ -21,11 +21,22 @@
 package gbdx
 
 import (
-	"encoding/json"
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"testing"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	retryablehttp "github.com/hashicorp/go-retryablehttp"
 )
 
-var gbdxS3CredResp = `{
+func TestNewAWSSession(t *testing.T) {
+	resp := `{
   "S3_secret_key": "secret-key",
   "prefix": "prefix",
   "bucket": "bucket",
@@ -33,12 +44,7 @@ var gbdxS3CredResp = `{
   "S3_session_token": "session-token"
 }`
 
-func TestS3CredUnmarshal(t *testing.T) {
-	awsInfo := awsInformation{}
-	if err := json.Unmarshal([]byte(gbdxS3CredResp), &awsInfo); err != nil {
-		t.Fatal(err)
-	}
-	expected := awsInformation{
+	exp := awsInformation{
 		SecretAccessKey: "secret-key",
 		AccessKeyID:     "access-key",
 		SessionToken:    "session-token",
@@ -48,8 +54,63 @@ func TestS3CredUnmarshal(t *testing.T) {
 		},
 	}
 
-	if awsInfo != expected {
-		t.Fatalf("%+v != %+v", awsInfo, expected)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, resp)
+	}))
+	defer ts.Close()
+	s3CredentialsEndpoint = ts.URL
+
+	client := retryablehttp.NewClient()
+	sess, loc, err := NewAWSSession(client)
+	if err != nil {
+		t.Fatal(err)
 	}
 
+	if *loc != exp.CustomerDataLocation {
+		t.Fatalf("S3 location %+v != %+v", loc, exp.CustomerDataLocation)
+	}
+	if aws.StringValue(sess.Config.Region) != "us-east-1" {
+		t.Fatal("us-east-1 is not the region set for the AWS session")
+	}
+	sessCreds, err := sess.Config.Credentials.Get()
+	if err != nil {
+		t.Fatalf("error getting session creds, err: %+v", err)
+	}
+	if sessCreds.AccessKeyID != exp.AccessKeyID || sessCreds.SecretAccessKey != exp.SecretAccessKey || sessCreds.SessionToken != exp.SessionToken {
+		t.Fatalf("session credentials not set as expected")
+	}
+}
+
+type mockS3 struct {
+	s3iface.S3API
+	prefixes []*s3.CommonPrefix
+}
+
+func (m mockS3) ListObjectsV2PagesWithContext(_ aws.Context, _ *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, _ ...request.Option) error {
+	f(&s3.ListObjectsV2Output{CommonPrefixes: m.prefixes[0:1]}, true)
+	f(&s3.ListObjectsV2Output{CommonPrefixes: m.prefixes[1:]}, true)
+	return nil
+}
+
+func TestS3Accessor(t *testing.T) {
+	exp := []string{"2a2c79d0-acd4-4ea3-a9a4-c144f85708d3", "4840c2f2-b978-4f7c-81a0-dc2988ca4b15", "5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a"}
+
+	m := mockS3{prefixes: []*s3.CommonPrefix{
+		&s3.CommonPrefix{Prefix: aws.String("prefix/rda/2a2c79d0-acd4-4ea3-a9a4-c144f85708d3/")},
+		&s3.CommonPrefix{Prefix: aws.String("prefix/rda/4840c2f2-b978-4f7c-81a0-dc2988ca4b15/")},
+		&s3.CommonPrefix{Prefix: aws.String("prefix/rda/5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a/")},
+	}}
+
+	accessor := S3Accessor{
+		dataLoc: CustomerDataLocation{},
+		svc:     m,
+	}
+
+	jobIDs, err := accessor.RDABatchJobPrefixes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(jobIDs, exp) {
+		t.Fatalf("%+v != %+v", jobIDs, exp)
+	}
 }
