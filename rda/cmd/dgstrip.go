@@ -96,7 +96,12 @@ var dgstripCmd = &cobra.Command{
 			return err
 		}
 
-		bar.FinishPrint(fmt.Sprintf("Tile retrieval took %s", time.Since(tStart)))
+		select {
+		case <-ctx.Done():
+			bar.FinishPrint(fmt.Sprintf("Completed %d of %d tiles before cancellation; rerun the command to pick up where you left off.", len(tiles), tileWindow.NumXTiles*tileWindow.NumYTiles))
+		default:
+			bar.FinishPrint(fmt.Sprintf("Tile retrieval took %s", time.Since(tStart)))
+		}
 		if len(tiles) < 1 {
 			return err
 		}

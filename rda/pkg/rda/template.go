@@ -344,11 +344,16 @@ type realizeError struct {
 }
 
 func (r *realizeError) addError(err error) *realizeError {
-	// Note that this is safe to call on a nil reciever.
+	// Don't bother reporting context cancellation as an error.
+	if errors.Cause(err).Error() == "context canceled" {
+		return r
+	}
+
 	if r == nil {
 		return &realizeError{errors: []error{err}}
 	}
 	r.errors = append(r.errors, err)
+
 	return r
 }
 
