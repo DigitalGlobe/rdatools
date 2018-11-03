@@ -23,8 +23,11 @@ package gbdx
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 
@@ -32,6 +35,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 )
 
@@ -83,23 +88,26 @@ func TestNewAWSSession(t *testing.T) {
 
 type mockS3 struct {
 	s3iface.S3API
-	prefixes []*s3.CommonPrefix
+	listFunc func(aws.Context, *s3.ListObjectsV2Input, func(*s3.ListObjectsV2Output, bool) bool, ...request.Option) error
 }
 
-func (m mockS3) ListObjectsV2PagesWithContext(_ aws.Context, _ *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, _ ...request.Option) error {
-	f(&s3.ListObjectsV2Output{CommonPrefixes: m.prefixes[0:1]}, true)
-	f(&s3.ListObjectsV2Output{CommonPrefixes: m.prefixes[1:]}, true)
-	return nil
+func (m mockS3) ListObjectsV2PagesWithContext(ctx aws.Context, in *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, opts ...request.Option) error {
+	return m.listFunc(ctx, in, f, opts...)
 }
 
-func TestS3Accessor(t *testing.T) {
+func TestRDABatchJobPrefixes(t *testing.T) {
 	exp := []string{"2a2c79d0-acd4-4ea3-a9a4-c144f85708d3", "4840c2f2-b978-4f7c-81a0-dc2988ca4b15", "5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a"}
 
-	m := mockS3{prefixes: []*s3.CommonPrefix{
-		&s3.CommonPrefix{Prefix: aws.String("prefix/rda/2a2c79d0-acd4-4ea3-a9a4-c144f85708d3/")},
-		&s3.CommonPrefix{Prefix: aws.String("prefix/rda/4840c2f2-b978-4f7c-81a0-dc2988ca4b15/")},
-		&s3.CommonPrefix{Prefix: aws.String("prefix/rda/5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a/")},
-	}}
+	m := mockS3{
+		listFunc: func(_ aws.Context, _ *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, _ ...request.Option) error {
+			f(&s3.ListObjectsV2Output{CommonPrefixes: []*s3.CommonPrefix{&s3.CommonPrefix{Prefix: aws.String("prefix/rda/2a2c79d0-acd4-4ea3-a9a4-c144f85708d3/")}}}, true)
+			f(&s3.ListObjectsV2Output{CommonPrefixes: []*s3.CommonPrefix{
+				&s3.CommonPrefix{Prefix: aws.String("prefix/rda/4840c2f2-b978-4f7c-81a0-dc2988ca4b15/")},
+				&s3.CommonPrefix{Prefix: aws.String("prefix/rda/5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a/")},
+			}}, true)
+			return nil
+		},
+	}
 
 	accessor := S3Accessor{
 		dataLoc: CustomerDataLocation{},
@@ -112,5 +120,63 @@ func TestS3Accessor(t *testing.T) {
 	}
 	if !reflect.DeepEqual(jobIDs, exp) {
 		t.Fatalf("%+v != %+v", jobIDs, exp)
+	}
+}
+
+type mockDownloader struct {
+	s3manageriface.DownloaderAPI
+	dlFunc func(aws.Context, io.WriterAt, *s3.GetObjectInput, ...func(*s3manager.Downloader)) (int64, error)
+}
+
+func (m mockDownloader) DownloadWithContext(ctx aws.Context, w io.WriterAt, in *s3.GetObjectInput, f ...func(*s3manager.Downloader)) (int64, error) {
+	return m.dlFunc(ctx, w, in, f...)
+}
+
+func TestDownloadBatchJobArtifacts(t *testing.T) {
+	m := mockS3{
+		listFunc: func(_ aws.Context, _ *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, _ ...request.Option) error {
+			f(&s3.ListObjectsV2Output{Contents: []*s3.Object{
+				&s3.Object{Key: aws.String("prefix/rda/jobid/granule_R0C0.tif")},
+				&s3.Object{Key: aws.String("prefix/rda/jobid/granule_R0C1.tif")},
+			}}, true)
+			f(&s3.ListObjectsV2Output{Contents: []*s3.Object{
+				&s3.Object{Key: aws.String("prefix/rda/jobid/granule_R1C0.tif")},
+				&s3.Object{Key: aws.String("prefix/rda/jobid/granule_R1C1.tif")},
+			}}, true)
+			return nil
+		},
+	}
+
+	accessor := S3Accessor{
+		dataLoc: CustomerDataLocation{},
+		svc:     m,
+		downloader: mockDownloader{
+			dlFunc: func(aws.Context, io.WriterAt, *s3.GetObjectInput, ...func(*s3manager.Downloader)) (int64, error) {
+				return 0, nil
+			},
+		},
+		progressFunc: func() int { return 0 },
+	}
+
+	tmpDir, err := ioutil.TempDir("", "TestDownloadBatchJobArtifacts-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dlCount, dlFunc, err := accessor.DownloadBatchJobArtifacts(context.Background(), tmpDir, "jobid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dlCount != 4 {
+		t.Fatalf("expected 4 objects to download, but got %d", dlCount)
+	}
+
+	numDL, err := dlFunc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if numDL != 4 {
+		t.Fatalf("should have downloaded 4 objects, but got %d", numDL)
 	}
 }

@@ -124,8 +124,10 @@ func NewS3Accessor(client *retryablehttp.Client, options ...S3AccessorOption) (*
 	return a, nil
 }
 
+// S3AccessorOption is a type to use for setting options on an S3Accessor.
 type S3AccessorOption func(*S3Accessor)
 
+// WithProgressFunc sets a progress function to be called whenever an artifact finishes downloading from S3.
 func WithProgressFunc(progressFunc func() int) S3AccessorOption {
 	return func(a *S3Accessor) {
 		a.progressFunc = progressFunc
