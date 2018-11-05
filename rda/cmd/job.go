@@ -178,8 +178,7 @@ var downloadCmd = &cobra.Command{
 		bar := pb.StartNew(numArtifacts)
 		tStart := time.Now()
 		gbdx.WithProgressFunc(bar.Increment)(accessor)
-		numDL, err := dlFunc()
-		if err != nil {
+		if err := dlFunc(); err != nil {
 			bar.FinishPrint("Failed downloading all artifacts; rerun the command to pick up where you left off.")
 			srcErr := errors.Cause(err)
 			if aerr, ok := srcErr.(awserr.Error); ok {
@@ -190,7 +189,7 @@ var downloadCmd = &cobra.Command{
 			}
 			return nil
 		}
-		bar.FinishPrint(fmt.Sprintf("S3 download of %d artifacts took %s", numDL, time.Since(tStart)))
+		bar.FinishPrint(fmt.Sprintf("S3 download of %d artifacts took %s", numArtifacts, time.Since(tStart)))
 		return nil
 	},
 }
@@ -229,81 +228,64 @@ var watchCmd = &cobra.Command{
 			}
 		}()
 
-	Polling:
+		// Begin watching the job and downloading granules as they appear.
+		status := "processing"
+	dlLoop:
 		for {
-			jobs, err := rda.FetchBatchStatus(ctx, client, jobID)
-			if err != nil {
-				return err
-			}
-			switch status := jobs[0].Status.Status; status {
-			case "complete":
-				break Polling
-			case "processing":
-			default:
-				return errors.Errorf("job id %s has status %s, exiting", jobID, status)
-			}
-
-			// Download anything we see in the bucket for this job that we don't have.
 			accessor, err := gbdx.NewS3Accessor(client)
 			if err != nil {
 				return err
 			}
 
-			_, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
+			numDL, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
 			if err != nil {
 				return err
 			}
-			numDL, err := dlFunc()
-			if err != nil {
-				log.Printf("Failed downloading all artifacts; rerun the command to pick up where you left off.")
-				srcErr := errors.Cause(err)
-				if aerr, ok := srcErr.(awserr.Error); ok {
-					srcErr = aerr.OrigErr()
+
+			switch {
+			case numDL > 0:
+				bar := pb.StartNew(numDL)
+				tStart := time.Now()
+				gbdx.WithProgressFunc(bar.Increment)(accessor)
+				if err := dlFunc(); err != nil {
+					bar.FinishPrint("Failed downloading all artifacts; rerun the command to pick up where you left off.")
+					srcErr := errors.Cause(err)
+					if aerr, ok := srcErr.(awserr.Error); ok {
+						srcErr = aerr.OrigErr()
+					}
+					if srcErr.Error() != "context canceled" {
+						return err
+					}
+					return nil
 				}
-				if srcErr.Error() != "context canceled" {
+				bar.FinishPrint(fmt.Sprintf("S3 download of %d artifacts took %s", numDL, time.Since(tStart)))
+
+			case status == "complete":
+				// We exit the loop here to ensure there is no more objects to download and the job status is set to complete.
+				break dlLoop
+
+			default:
+				jobs, err := rda.FetchBatchStatus(ctx, client, jobID)
+				if err != nil {
 					return err
 				}
-				return nil
-			}
-			if numDL > 0 {
-				log.Printf("downloaded %d artifacts", numDL)
-			}
+				switch status = jobs[0].Status.Status; status {
+				case "complete":
+					continue dlLoop
+				case "processing":
+				default:
+					return errors.Errorf("job id %s has status %s, exiting", jobID, status)
+				}
 
-			select {
-			case <-time.After(1 * time.Minute):
-			case <-ctx.Done():
-				log.Printf("exited before downloading all artifacts; rerun the command to pick up where you left off.")
-				return nil
+				// If we are still processing but nothing was found to download, sleep for a while before checking again.
+				select {
+				case <-time.After(10 * time.Second):
+				case <-ctx.Done():
+					log.Printf("exited before downloading all artifacts; rerun the command to pick up where you left off.")
+					return nil
+				}
 			}
 		}
-
-		// Final download check on successful finish.
-		accessor, err := gbdx.NewS3Accessor(client)
-		if err != nil {
-			return err
-		}
-
-		numArtifacts, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
-		if err != nil {
-			return err
-		}
-		bar := pb.StartNew(numArtifacts)
-		tStart := time.Now()
-		gbdx.WithProgressFunc(bar.Increment)(accessor)
-		numDL, err := dlFunc()
-		if err != nil {
-			bar.FinishPrint("Failed downloading all artifacts; rerun the command to pick up where you left off.")
-			srcErr := errors.Cause(err)
-			if aerr, ok := srcErr.(awserr.Error); ok {
-				srcErr = aerr.OrigErr()
-			}
-			if srcErr.Error() != "context canceled" {
-				return err
-			}
-			return nil
-		}
-		bar.FinishPrint(fmt.Sprintf("S3 download of %d artifacts took %s", numDL, time.Since(tStart)))
-
 		return nil
 	},
 }

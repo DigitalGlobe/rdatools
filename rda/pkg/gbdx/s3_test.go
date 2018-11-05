@@ -172,11 +172,16 @@ func TestDownloadBatchJobArtifacts(t *testing.T) {
 		t.Fatalf("expected 4 objects to download, but got %d", dlCount)
 	}
 
-	numDL, err := dlFunc()
+	if err := dlFunc(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Count files written.
+	files, err := ioutil.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if numDL != 4 {
-		t.Fatalf("should have downloaded 4 objects, but got %d", numDL)
+	if len(files) != 4 {
+		t.Fatalf("expected 4 objects written to disk, but got %d", len(files))
 	}
 }

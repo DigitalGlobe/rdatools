@@ -163,23 +163,36 @@ func (a *S3Accessor) RDABatchJobPrefixes(ctx context.Context) ([]string, error) 
 // downloaded and a function to run that initiates the download of the
 // RDA batch artifacts associated with the given jobID. If the file
 // already exists in outDir (taking the same name as in S3), it will
-// not be downloaded.
+// not be downloaded and won't be counted in the returned count.
 //
 // We return in this style so that the user can instantiate a progress
 // bar if they like; you can provide a function via WithProgressFunc,
-// and it will be invokded on every successful download. The returned
-// function will return a count of newly downloaded artifacts.
-func (a *S3Accessor) DownloadBatchJobArtifacts(ctx context.Context, outDir string, jobID string) (int, func() (int, error), error) {
+// and it will be invokded on every successful download.
+func (a *S3Accessor) DownloadBatchJobArtifacts(ctx context.Context, outDir string, jobID string) (int, func() error, error) {
 	if err := os.MkdirAll(outDir, 0775); err != nil {
 		return 0, nil, err
 	}
 
-	toDL, err := a.listBatchJobArtifacts(ctx, jobID)
+	possibleDL, err := a.listBatchJobArtifacts(ctx, jobID)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	return len(toDL), func() (int, error) { return a.downloadArtifacts(ctx, outDir, toDL) }, nil
+	// Filter out any we've already downloaded.
+	toDL := []downloadLocation{}
+	for _, obj := range possibleDL {
+		_, suffix := path.Split(*obj.Key)
+		file := filepath.Join(outDir, suffix)
+
+		if _, err := os.Stat(file); !os.IsNotExist(err) {
+			a.progressFunc()
+			continue
+		}
+
+		toDL = append(toDL, downloadLocation{file: file, object: obj})
+	}
+
+	return len(toDL), func() error { return a.downloadArtifacts(ctx, outDir, toDL) }, nil
 }
 
 func (a *S3Accessor) listBatchJobArtifacts(ctx context.Context, jobID string) ([]*s3.GetObjectInput, error) {
@@ -198,25 +211,21 @@ func (a *S3Accessor) listBatchJobArtifacts(ctx context.Context, jobID string) ([
 	return objects, nil
 }
 
-func (a *S3Accessor) downloadArtifacts(ctx context.Context, outDir string, objects []*s3.GetObjectInput) (int, error) {
-	numDL := 0
-	for _, obj := range objects {
-		_, suffix := path.Split(*obj.Key)
-		file := filepath.Join(outDir, suffix)
+type downloadLocation struct {
+	file   string
+	object *s3.GetObjectInput
+}
 
-		// Don't download if its already here.
-		if _, err := os.Stat(file); !os.IsNotExist(err) {
-			a.progressFunc()
-			continue
-		}
+func (a *S3Accessor) downloadArtifacts(ctx context.Context, outDir string, dlLoc []downloadLocation) error {
+	for _, dl := range dlLoc {
+		obj, file := dl.object, dl.file
 
 		if err := a.downloadArtifact(ctx, file, obj); err != nil {
-			return numDL, err
+			return err
 		}
-		numDL++
 		a.progressFunc()
 	}
-	return numDL, nil
+	return nil
 }
 
 func (a *S3Accessor) downloadArtifact(ctx context.Context, file string, obj *s3.GetObjectInput) error {
