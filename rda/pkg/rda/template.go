@@ -107,12 +107,10 @@ func WithProgressFunc(progressFunc func() int) TemplateOption {
 
 // Metadata returns the RDA metadata describing the template.
 func (t *Template) Metadata() (*Metadata, error) {
-	u, err := url.Parse(fmt.Sprintf(templateMetadataEndpoint, t.templateID))
+	ep, err := urls.metadataURL(t.templateID, t.queryParams)
 	if err != nil {
-		return nil, errors.Wrap(err, "couldn't parse template metadata endpoint")
+		return nil, err
 	}
-	u.RawQuery = t.queryParams.Encode()
-	ep := u.String()
 
 	res, err := t.client.Get(ep)
 	if err != nil {
@@ -163,7 +161,7 @@ func (t *Template) BatchRealize(ctx context.Context, format BatchFormat) (*Batch
 		return nil, errors.Wrap(err, "failed forming request body for batch materialization")
 	}
 
-	res, err := t.client.Post(templateBatchEndpoint, "application/json", bytes.NewBuffer(body))
+	res, err := t.client.Post(urls.batchURL(), "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed posting batch materialization request")
 	}
@@ -215,7 +213,6 @@ func (t *Template) realize(ctx context.Context, tileDir string) ([]TileInfo, err
 		defer close(jobsIn)
 		defer wg.Done()
 
-		tileURL := fmt.Sprintf(templateTileEnpoint, t.templateID)
 		for x := t.window.MinTileX; x <= t.window.MaxTileX; x++ {
 			for y := t.window.MinTileY; y <= t.window.MaxTileY; y++ {
 				rj := realizeJob{
@@ -224,14 +221,8 @@ func (t *Template) realize(ctx context.Context, tileDir string) ([]TileInfo, err
 					yTile:    y,
 				}
 
-				tURL := fmt.Sprintf(tileURL, x, y)
-				u, err := url.Parse(tURL)
-				if err != nil {
-					rj.err = errors.Wrapf(err, "failed parsing %s during tile realization", tURL)
-				} else {
-					u.RawQuery = t.queryParams.Encode()
-					rj.url = u.String()
-				}
+				// Note that if the rj.err is set, we expect it to be handled by the consumer.
+				rj.url, rj.err = urls.tileURL(t.templateID, x, y, t.queryParams)
 				select {
 				case jobsIn <- rj:
 				case <-ctx.Done():

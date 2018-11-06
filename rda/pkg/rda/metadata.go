@@ -24,7 +24,9 @@ import (
 	"encoding/json"
 	"io"
 	"math"
+	"net/http"
 
+	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
 
@@ -64,7 +66,7 @@ func (m *Metadata) Subset(xOff, yOff, xSize, ySize int) (*TileWindow, error) {
 	if xSize < 1 || ySize < 1 {
 		return nil, errors.Errorf("(xSize, ySize) = (%d, %d), but must be positive", xSize, ySize)
 	}
-	if (xOff+xSize < 0) || (yOff+ySize < 0) || (xOff > m.ImageMetadata.ImageWidth) || (yOff > m.ImageMetadata.ImageHeight) {
+	if (xOff+xSize <= 0) || (yOff+ySize <= 0) || (xOff >= m.ImageMetadata.ImageWidth) || (yOff >= m.ImageMetadata.ImageHeight) {
 		return nil, errors.Errorf("requested window (%d,%d) - (%d,%d) not contained in image window (%d,%d) - (%d,%d)",
 			xOff, yOff, xOff+xSize, yOff+ySize,
 			0, 0, m.ImageMetadata.ImageWidth, m.ImageMetadata.ImageHeight)
@@ -237,4 +239,66 @@ func (gt *ImageGeoreferencing) hardInvert() (ImageGeoreferencing, error) {
 		TranslateX: (gt.ShearX*gt.TranslateY - gt.TranslateX*gt.ScaleY) * invDet,
 		TranslateY: (-gt.ScaleX*gt.TranslateY + gt.TranslateX*gt.ShearY) * invDet,
 	}, nil
+}
+
+// OperatorInfo returns information describing the RDA operators with
+// the given name.  If no names are provided, all operators will be
+// described.
+func OperatorInfo(client *retryablehttp.Client, w io.Writer, opNames ...string) error {
+	opInfo := []interface{}{}
+	for _, ep := range urls.operatorURL(opNames...) {
+
+		if err := func() error {
+			res, err := client.Get(ep)
+			if err != nil {
+				return errors.Wrapf(err, "failure requesting %s", ep)
+			}
+			defer res.Body.Close()
+			if res.StatusCode != http.StatusOK {
+				return errors.Errorf("failed fetching operator info from %s, HTTP Status: %s", ep, res.Status)
+			}
+
+			var blob interface{}
+			if err := json.NewDecoder(res.Body).Decode(&blob); err != nil {
+				return errors.Wrapf(err, "couldn't unmarshal response from %s", ep)
+			}
+			opInfo = append(opInfo, blob)
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+
+	var err error
+	if len(opNames) == 0 { // The response should be a list of all the operators in this case.
+		err = json.NewEncoder(w).Encode(opInfo[0])
+	} else {
+		err = json.NewEncoder(w).Encode(opInfo)
+	}
+	return errors.Wrap(err, "failed encoding responses describing the given operators")
+}
+
+// StripInfo returns information describing the DG catalog id.  If
+// zipped is true, we call the endpoint that returns zipped metadata,
+// otherwise we stream the expected json response.
+func StripInfo(client *retryablehttp.Client, w io.Writer, catalogID string, zipped bool) error {
+	ep := urls.stripinfoURL(catalogID, zipped)
+	res, err := client.Get(ep)
+	if err != nil {
+		return errors.Wrapf(err, "failure requesting %s", ep)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return errors.Errorf("failed fetching strip info from %s, HTTP Status: %s", ep, res.Status)
+	}
+
+	if !zipped {
+		var blob interface{}
+		if err := json.NewDecoder(res.Body).Decode(&blob); err != nil {
+			return errors.Wrapf(err, "couldn't unmarshal response from %s", ep)
+		}
+		return errors.Wrapf(json.NewEncoder(w).Encode(blob), "failed writing json response from %s", ep)
+	}
+	_, err = io.Copy(w, res.Body)
+	return errors.Wrapf(err, "failed writing zipped response from %s", ep)
 }

@@ -22,10 +22,7 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
@@ -56,31 +53,24 @@ var stripinfoCmd = &cobra.Command{
 			}
 		}()
 
-		urlPath := fmt.Sprintf(rda.StripInfoEndpoint, args[0])
-		res, err := client.Get(urlPath)
-		if err != nil {
-			return errors.Wrapf(err, "failure requesting %s", urlPath)
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			return rda.ResponseToError(res.Body, fmt.Sprintf("failed fetching operator info from %s, HTTP Status: %s", urlPath, res.Status))
+		// No zip file, so stream out json.
+		if zipfile == "" {
+			return errors.Wrap(rda.StripInfo(client, os.Stdout, args[0], false), "failed copying response body to stdout")
 		}
 
-		_, err = io.Copy(os.Stdout, res.Body)
-		return errors.Wrap(err, "failed copying response body to stdout")
+		f, err := os.Create(zipfile)
+		if err != nil {
+			return errors.Wrap(err, "failed creating zip file to write RDA strip information to")
+		}
+		defer f.Close()
+
+		return errors.Wrap(rda.StripInfo(client, f, args[0], true), "failed writing RDA strip information as zip file")
 	},
 }
 
+var zipfile string
+
 func init() {
 	rootCmd.AddCommand(stripinfoCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// stripinfoCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// stripinfoCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	stripinfoCmd.Flags().StringVar(&zipfile, "zipfile", "", "write zipped metadata to the provided filepath")
 }

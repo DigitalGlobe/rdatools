@@ -22,10 +22,7 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
@@ -35,10 +32,10 @@ import (
 
 // operatorCmd represents the operator command
 var operatorCmd = &cobra.Command{
-	Use:   "operator <operator-name>",
+	Use:   "operator <operator-name>*",
 	Short: "Return JSON describing the operator(s)",
 	Long:  "Return the RDA description of the provided operator.  If the operator is omitted, return this info for all operators.",
-	Args:  cobra.MaximumNArgs(1),
+	//Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		client, writeConfig, err := newClient(ctx)
@@ -51,21 +48,7 @@ var operatorCmd = &cobra.Command{
 			}
 		}()
 
-		urlPath := rda.OperatorEndpoint
-		if len(args) > 0 {
-			urlPath = fmt.Sprintf("%s/%s", urlPath, args[0])
-		}
-		res, err := client.Get(urlPath)
-		if err != nil {
-			return errors.Wrapf(err, "failure requesting %s", urlPath)
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			return errors.Errorf("failed fetching operator info from %s, HTTP Status: %s", urlPath, res.Status)
-		}
-
-		_, err = io.Copy(os.Stdout, res.Body)
-		return errors.Wrap(err, "failed copying response body to stdout")
+		return errors.Wrap(rda.OperatorInfo(client, os.Stdout, args...), "failed copying response body to stdout")
 	},
 }
 

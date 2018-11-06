@@ -152,7 +152,7 @@ func (et *EpochTime) UnmarshalJSON(b []byte) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "couldn't unmarshal epoch time")
 	}
-	*et = EpochTime(time.Unix(int64(epoch/1e3), 0))
+	*et = EpochTime(time.Unix(0, int64(1e6*epoch)))
 	return nil
 }
 
@@ -202,6 +202,7 @@ type batchStatusResponse struct {
 
 // FetchBatchStatus returns the status of RDA batch materialization jobs.
 func FetchBatchStatus(ctx context.Context, client *retryablehttp.Client, jobIDs ...string) ([]*BatchResponse, error) {
+
 	numParallel := 4 * runtime.NumCPU()
 	if len(jobIDs) < numParallel {
 		numParallel = len(jobIDs)
@@ -257,7 +258,7 @@ func FetchBatchStatus(ctx context.Context, client *retryablehttp.Client, jobIDs 
 }
 
 func batchStatusJob(ctx context.Context, client *retryablehttp.Client, jobID string) (*BatchResponse, error) {
-	ep := fmt.Sprintf(templateJobEndpoint, jobID)
+	ep := urls.jobURL(jobID)
 	req, err := retryablehttp.NewRequest("GET", ep, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed forming request for batch job id %s", ep)

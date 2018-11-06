@@ -1,0 +1,32 @@
+{
+  "imageMetadata": {
+    "imageId": "9ff2585a-d3d7-4d97-88bf-f53985177943",
+    "nativeTileFileFormat": "TIF",
+    "tileXOffset": 0,
+    "tileYOffset": 0,
+    "numXTiles": 100,
+    "numYTiles": 100,
+    "tileXSize": 10,
+    "tileYSize": 10,
+    "numBands": 3,
+    "dataType": "BYTE",
+    "imageHeight": 1000,
+    "imageWidth": 1000,
+    "minX": 0,
+    "minY": 0,
+    "maxX": 999,
+    "maxY": 999,
+    "minTileX": 0,
+    "minTileY": 0,
+    "maxTileX": 99,
+    "maxTileY": 99
+  },
+  "imageGeoreferencing": {
+    "scaleX": 1,
+    "scaleY": -1,
+    "translateX": 0,
+    "translateY": 0,
+    "shearX": 0,
+    "shearY": 0
+  }
+}
