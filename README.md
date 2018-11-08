@@ -6,9 +6,15 @@ A cli for accessing RDA resources.
 
 The `rda` command line tool is a Go based executable for accessing RDA functionality.  As such, it is a statically linked executable and should run without hassle on most systems.
 
+# Installation
+
+To install `rda`, navigate to releases page [here](https://github.com/DigitalGlobe/rdatools/releases)  and download the most recent package for your operating system (note that Darwin is Max OSX).  Unpack your download and you will find a binary executable named `rda`.  Place this in your path so that you can access it from the command line wherever you're at, or run it directly from where you downloaded it.
+
 ## Using `rda`
 
-In general, `rda --help` is your guide.  `--help` works for all subcommands as well.  Some of the commands return JSON responses; formatting JSON is easy by piping the output of the command to `jq` or `python -m json.tool`.  For instance, `rda operator DigitalGlobeStrip1B | jq` yields nicely formatted JSON describing that operator.
+In general, `rda --help` is your guide, and note that `--help` works for all subcommands as well.  You can find what version of `rda` you're running via `rda --version`.
+
+Some of the commands return JSON responses; formatting JSON is easy by piping the output of the command to `jq` or `python -m json.tool`.  For instance, `rda operator DigitalGlobeStrip1B | jq` yields nicely formatted JSON describing that operator.
 
 ### `rda configure`
 
@@ -26,28 +32,69 @@ This will return to you a valid GBDX token.  If the cached one is not set or exp
 
 Returns JSON describing all the RDA operators available.  To get information on a single operator, you just specify the name, e.g. `rda operator DigitalGlobeStrip`. JSON is returned so you may want to pipe the output to a formatting tool.
 
+### `rda stripinfo`
+
+`rda stripinfo` returns JSON desribing the given catalog.  For instance, `rda stripinfo 103001000EBC3C00` will give you all the information you might want about `103001000EBC3C00`.  Remember to pipe this to a JSON formatter if you want a pretty view of it.
+
+In addition, you can provide a `--zipfile <location of zip>` (IMD files, etc) to download the original metadata that came with the imagery when provided by DG's internal factory.
+
 ### `rda dgstrip`
 
-`rda dgstrip` will concurrently download and create a VRT composed of tiles _realized_ from RDA.  Note that you can provide either `--srcwin` or `--projwin` flags if you don't want to download an entire image, which is usually a good idea.  `rda dgstrip` downloads all tiles that intersect the provided window where that window intersects the global image window.
+`rda dgstrip` is a subcommand offering the additional commands `metadata`, `realize`, and `batch`, described below.
 
-Try out `rda dgstrip --help` to see the flags you can provide to control how the image is processed.
+#### `rda dgstrip metadata`
+
+`rda dgstrip metadata` will return JSON describing what you can download via `rda dgstrip realize` or `rda dgstrip batch`.  Try it out via
+```
+rda dgstrip metadata 103001000EBC3C00 --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326
+```
+and you'll get a response desribing how large `103001000EBC3C00` is in a geographic projection (EPSG:4326 is the code for a lat/long projection; you can specify any that you like via the `--crs` flag; the default projection is UTM in the zone that strip is located).
+
+#### `rda dgstrip realize`
+
+This command concurrently downloads and creates a VRT composed of tiles _realized_ from RDA.  Note that you can provide either `--srcwin` or `--projwin` flags if you don't want to download an entire image, which is usually a good idea, as large images are best aquired using `rda dgstrip batch`.  `rda dgstrip realize` downloads all tiles that intersect the provided window where that window intersects the global image window.
+
+Try out `rda dgstrip realize --help` to see the flags you can provide to control how the image is processed.
 
 For example,
 ```
-rda dgstrip 103001000EBC3C00 103001000EBC3C00-ovr.vrt --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
+rda dgstrip realize 103001000EBC3C00 103001000EBC3C00-ovr.vrt --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
 ```
 Will return a downsampled version of catalog id `103001000EBC3C00` to you as a VRT.  Just load it up into QGIS/ArcGIS/your favorite viewer that can read VRTs and profit! 
 
 The actual tiles are stored in a directory named `103001000EBC3C00` adjacent to the VRT.  The VRT format is an xml based format that describes how to lay out the tiles as if they were a single image.  You can create a single geotiff out of the downloaded product via GDAL, e.g. `gdal_translate 103001000EBC3C00.vrt 103001000EBC3C00.tif` should do it if you have GDAL installed.
 
-### `rda dgstrip metadata` 
+#### `rda dgstrip batch` 
 
-`rda dgstrip metadata` will return JSON describing what you can download via `rda dgstrip`.  Try it out via
+`batch` takes all the same flags as `realize` (except the vrt location), but rather than realize the tiles it submits a batch materialization request to RDA.  You will get a response that includes a job id, which as you'll see below you can use to status and download the output of the batch materialization job. For example, running
 ```
-rda dgstrip 103001000EBC3C00 --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326
+rda dgstrip batch 103001000EBC3C00 103001000EBC3C00-ovr.vrt --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
 ```
-and you'll get a response desribing how large `103001000EBC3C00` is in a geographic projection (EPSG:4326 is the code for a lat/long projection; you can specify any that you like via the `--crs` flag).
+The output of this is a json message, that includes a field "jobId" whos values you can use as described below.
 
-### `rda stripinfo`
+### `rda job`
 
-`rda stripinfo` returns JSON desribing a collection.  For instance, `rda stripinfo 103001000EBC3C00` will give you all the information you might want about `103001000EBC3C00`.  Remember to pipe this to a JSON formatter if you want a pretty view of it.
+`rda job` hosts subcommands lets you status and download the outputs from RDA's batch materialization endpoint. The subcommands of interest are `download`, `downloadable`, `status`, and `watch`.
+
+#### `rda job downloadable`
+
+This command returns all the job ids that are listed in your GBDX customer data bucket under the rda prefix.  You should be able to `status`, `download`, or `watch` these jobs.
+
+#### `rda job download`
+
+`download` will download all the outputs for the given job id that are in S3.  If the job is not in the "complete" state, you will get an error.  Use the `watch` subcommand to watch a job and greedily download outputs as they arrive.
+
+#### `rda job status`
+
+This returns the status of the given job id associated with an RDA materialization request.
+
+#### `rda job watch`
+
+This is a combination of the functionality of `download` and `status`; essentially it polls RDA for job status, greedily downloading any of its produced outputs as they are created, and continues to poll until the job is complete and all outputs are downloaded to the given output directory.
+
+For example, running
+```
+rda job watch ~/Downloads/rdaout 21a12531-2bfe-4e29-84b0-52b9433f7a61
+```
+downloads the output of job id `21a12531-2bfe-4e29-84b0-52b9433f7a61` to `~/Downloads/rdaout` on my machine.
+

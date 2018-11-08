@@ -71,10 +71,10 @@ func newEndpoints(base string) endpoints {
 
 		operator:  "operator",
 		stripinfo: "stripMetadata/%s",
-		metadata:  "%s/metadata",
-		tile:      "%s/tile/%d/%d",
-		batch:     "materialize",
-		job:       "materialize/status/%s",
+		metadata:  "template/%s/metadata",
+		tile:      "template/%s/tile/%d/%d",
+		batch:     "template/materialize",
+		job:       "template/materialize/status/%s",
 	}
 }
 

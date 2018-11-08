@@ -177,5 +177,4 @@ func TestTemplateBatchRealize(t *testing.T) {
 			}
 		})
 	}
-
 }

@@ -40,9 +40,15 @@ import (
 
 const dgstripTemplateName = "DigitalGlobeStrip"
 
-// dgstripCmd represents the dgstrip command
+// dgstripRealizeCmd represents the dgstrip command
 var dgstripCmd = &cobra.Command{
-	Use:   "dgstrip <catalog-id> <output-vrt>",
+	Use:   "dgstrip",
+	Short: "Subcommand for accessing DigitalGlobe image strips from RDA",
+}
+
+// dgstripRealizeCmd represents the dgstrip command
+var dgstripRealizeCmd = &cobra.Command{
+	Use:   "realize <catalog-id> <output-vrt>",
 	Short: "Realize tiles of a DigitalGlobe strip from RDA",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -250,6 +256,7 @@ var dgstripFlags struct {
 
 func init() {
 	rootCmd.AddCommand(dgstripCmd)
+	dgstripCmd.AddCommand(dgstripRealizeCmd)
 	dgstripCmd.AddCommand(dgstripMetadataCmd)
 	dgstripCmd.AddCommand(dgstripBatchCmd)
 
@@ -262,13 +269,12 @@ func init() {
 	dgstripCmd.PersistentFlags().Var(&dgstripFlags.bands, "bands", `selected band combos, choose "ALL", "RGB", or a comma seperated list like "4,2,1"; indexing starts at 0 in the latter case`)
 	dgstripCmd.PersistentFlags().BoolVar(&dgstripFlags.dra, "dra", false, "apply a DRA (aka convert to 8 bit in a pretty way)")
 
-	// Local flags specific to fetching tiles.
-	dgstripCmd.Flags().Uint64Var(&dgstripFlags.maxconcurr, "maxconcurrency", 0, "set how many concurrent requests to allow; by default, 4 * num CPUs is used")
-	dgstripCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
-	dgstripCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
+	// Local flags specific to realizing tiles.
+	dgstripRealizeCmd.Flags().Uint64Var(&dgstripFlags.maxconcurr, "maxconcurrency", 0, "set how many concurrent requests to allow; by default, 4 * num CPUs is used")
+	dgstripRealizeCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
+	dgstripRealizeCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
 
-	// Local flags specific to fetching tiles.
+	// Local flags specific to batch requesting tiles.
 	dgstripBatchCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
 	dgstripBatchCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
-
 }
