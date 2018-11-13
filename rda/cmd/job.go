@@ -124,6 +124,36 @@ var downloadableCmd = &cobra.Command{
 	},
 }
 
+// rmCmd represents the rm command
+var rmCmd = &cobra.Command{
+	Use:   "rm",
+	Short: "remove S3 artifacts in your GBDX customer data bucket associated with the RDA batch job ID",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err) // TODO, handle more gracefully.
+			}
+		}()
+
+		accessor, err := gbdx.NewS3Accessor(client)
+		if err != nil {
+			return err
+		}
+		numDel, err := accessor.RDADeleteBatchJobArtifacts(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		log.Printf("deleted %d artifacts associated with %s\n", numDel, args[0])
+		return nil
+	},
+}
+
 // download represents the download command
 var downloadCmd = &cobra.Command{
 	Use:   "download <outdir> <job id>",
@@ -293,6 +323,7 @@ var watchCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(jobCmd)
 	jobCmd.AddCommand(statusCmd)
+	jobCmd.AddCommand(rmCmd)
 	jobCmd.AddCommand(downloadableCmd)
 	jobCmd.AddCommand(downloadCmd)
 	jobCmd.AddCommand(watchCmd)

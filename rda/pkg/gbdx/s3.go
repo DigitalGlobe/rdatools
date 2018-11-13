@@ -106,7 +106,7 @@ type S3Accessor struct {
 	progressFunc func() int
 }
 
-// NewS3Saccessor returns a configured S3Accessor.
+// NewS3Accessor returns a configured S3Accessor.
 func NewS3Accessor(client *retryablehttp.Client, options ...S3AccessorOption) (*S3Accessor, error) {
 	sess, cdl, err := NewAWSSession(client)
 	if err != nil {
@@ -156,7 +156,34 @@ func (a *S3Accessor) RDABatchJobPrefixes(ctx context.Context) ([]string, error) 
 	}
 
 	return jobIDs, nil
+}
 
+// RDADeleteBatchJobArtifacts deletes all RDA batch job artifacts from
+// S3 associated with the given job id, returning the number deleted.
+func (a *S3Accessor) RDADeleteBatchJobArtifacts(ctx context.Context, jobID string) (int, error) {
+	// List objects under this jobID.
+	objects, err := a.listBatchJobArtifacts(ctx, jobID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Delete them in batches of up to 1000 (an S3 api limit).
+	for i := 0; i < len(objects); i += 1000 {
+		toDel := s3.DeleteObjectsInput{
+			Bucket: aws.String(a.dataLoc.Bucket),
+			Delete: &s3.Delete{
+				Objects: []*s3.ObjectIdentifier{},
+			},
+		}
+		for j := i; j < i+1000 && j < len(objects); j++ {
+			toDel.Delete.Objects = append(toDel.Delete.Objects, &s3.ObjectIdentifier{Key: objects[j].Key})
+		}
+
+		if _, err := a.svc.DeleteObjectsWithContext(ctx, &toDel); err != nil {
+			return 0, errors.Wrapf(err, "failed deleting artifacts associated with RDA job id %s from S3", jobID)
+		}
+	}
+	return len(objects), nil
 }
 
 // DownloadBatchJobArtifacts returns the count of objects that will be

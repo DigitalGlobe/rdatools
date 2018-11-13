@@ -88,11 +88,16 @@ func TestNewAWSSession(t *testing.T) {
 
 type mockS3 struct {
 	s3iface.S3API
-	listFunc func(aws.Context, *s3.ListObjectsV2Input, func(*s3.ListObjectsV2Output, bool) bool, ...request.Option) error
+	listFunc   func(aws.Context, *s3.ListObjectsV2Input, func(*s3.ListObjectsV2Output, bool) bool, ...request.Option) error
+	delObjects func(aws.Context, *s3.DeleteObjectsInput, ...request.Option) (*s3.DeleteObjectsOutput, error)
 }
 
 func (m mockS3) ListObjectsV2PagesWithContext(ctx aws.Context, in *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, opts ...request.Option) error {
 	return m.listFunc(ctx, in, f, opts...)
+}
+
+func (m mockS3) DeleteObjectsWithContext(ctx aws.Context, in *s3.DeleteObjectsInput, opts ...request.Option) (*s3.DeleteObjectsOutput, error) {
+	return m.delObjects(ctx, in, opts...)
 }
 
 func TestRDABatchJobPrefixes(t *testing.T) {
@@ -185,3 +190,25 @@ func TestDownloadBatchJobArtifacts(t *testing.T) {
 		t.Fatalf("expected 4 objects written to disk, but got %d", len(files))
 	}
 }
+
+// func TestRDADeleteBatchJobArtifacts(t *testing.T) {
+// 	m := mockS3{
+// 		listFunc: func(_ aws.Context, _ *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, _ ...request.Option) error {
+// 			f(&s3.ListObjectsV2Output{CommonPrefixes: []*s3.CommonPrefix{
+// 				&s3.CommonPrefix{Prefix: aws.String("prefix/rda/4840c2f2-b978-4f7c-81a0-dc2988ca4b15/")},
+// 				&s3.CommonPrefix{Prefix: aws.String("prefix/rda/5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a/")},
+// 			}}, true)
+// 			return nil
+// 		},
+// 		delObjects: func(ctx aws.Context, in *s3.DeleteObjectsInput, opts ...request.Option) (*s3.DeleteObjectsOutput, error) {
+
+// 		},
+// 	}
+
+// 	accessor := S3Accessor{
+// 		dataLoc: CustomerDataLocation{},
+// 		svc:     m,
+// 	}
+
+// 	jobIDs, err := accessor.TestRDADeleteBatchJobArtifacts(context.Background(),
+// }

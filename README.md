@@ -98,3 +98,11 @@ rda job watch ~/Downloads/rdaout 21a12531-2bfe-4e29-84b0-52b9433f7a61
 ```
 downloads the output of job id `21a12531-2bfe-4e29-84b0-52b9433f7a61` to `~/Downloads/rdaout` on my machine.
 
+#### `rda job rm`
+
+This removes all artifacts in S3 associated with the a given RDA batch job id.  For instance, 
+```
+rda job rm 21a12531-2bfe-4e29-84b0-52b9433f7a61
+```
+would remove all S3 objects in your GBDX customer data bucket associated with the batch job `21a12531-2bfe-4e29-84b0-52b9433f7a61`.
+
