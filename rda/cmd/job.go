@@ -192,6 +192,10 @@ var downloadCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if len(jobs) != 1 {
+			return errors.Errorf("no job found found for job id %s", jobID)
+		}
+
 		if jobs[0].Status.Status != "complete" {
 			return errors.Errorf("cannot download a job that isn't complete, job status is %q", jobs[0].Status.Status)
 		}
@@ -299,6 +303,10 @@ var watchCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
+				if len(jobs) != 1 {
+					return errors.Errorf("no job found found for job id %s", jobID)
+				}
+
 				switch status = jobs[0].Status.Status; status {
 				case "complete":
 					continue dlLoop
