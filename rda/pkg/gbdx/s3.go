@@ -158,6 +158,28 @@ func (a *S3Accessor) RDABatchJobPrefixes(ctx context.Context) ([]string, error) 
 	return jobIDs, nil
 }
 
+// RDABatchJobObjects returns all the objects in S3 that appear in
+// your GBDX customer data bucket under the "rda" prefix with the
+// given jobID.
+func (a *S3Accessor) RDABatchJobObjects(ctx context.Context, jobID string) ([]string, error) {
+	// List objects under this jobID.
+	objects, err := a.listBatchJobArtifacts(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	paths := []string{}
+	for _, obj := range objects {
+		splitPath := strings.Split(aws.StringValue(obj.Key), "/")
+		if len(splitPath) < 3 {
+			return nil, errors.Errorf("expected the S3 path %q when split to have length of 3 or more", aws.StringValue(obj.Key))
+		}
+		// We're pulling off the GBDX account and rda prefixes before we return the path here.
+		paths = append(paths, path.Join(splitPath[2:]...))
+	}
+	return paths, nil
+}
+
 // RDADeleteBatchJobArtifacts deletes all RDA batch job artifacts from
 // S3 associated with the given job id, returning the number deleted.
 func (a *S3Accessor) RDADeleteBatchJobArtifacts(ctx context.Context, jobID string) (int, error) {
@@ -208,18 +230,27 @@ func (a *S3Accessor) DownloadBatchJobArtifacts(ctx context.Context, outDir strin
 	// Filter out any we've already downloaded.
 	toDL := []downloadLocation{}
 	for _, obj := range possibleDL {
-		_, suffix := path.Split(*obj.Key)
-		file := filepath.Join(outDir, suffix)
-
-		if _, err := os.Stat(file); !os.IsNotExist(err) {
-			a.progressFunc()
-			continue
+		// Remove the jobID from the path we are going to
+		// write the output to.  This is in case the jobID is
+		// actually a nested S3 path.
+		paths := strings.Split(aws.StringValue(obj.Key), "/")
+		if len(paths) < 3 {
+			return 0, nil, errors.Errorf("cannot split s3 path %q into 3 or more components", aws.StringValue(obj.Key))
+		}
+		basePath := strings.TrimPrefix(strings.Join(paths[2:], "/"), jobID)
+		if basePath == "" {
+			basePath = paths[len(paths)-1]
 		}
 
+		// Form the file path, trying to handle Window's paths while we do it.
+		file := filepath.Join(outDir, filepath.Join(strings.Split(basePath, "/")...))
+		if _, err := os.Stat(file); !os.IsNotExist(err) {
+			continue
+		}
 		toDL = append(toDL, downloadLocation{file: file, object: obj})
 	}
 
-	return len(toDL), func() error { return a.downloadArtifacts(ctx, outDir, toDL) }, nil
+	return len(toDL), func() error { return a.downloadArtifacts(ctx, toDL) }, nil
 }
 
 func (a *S3Accessor) listBatchJobArtifacts(ctx context.Context, jobID string) ([]*s3.GetObjectInput, error) {
@@ -243,7 +274,7 @@ type downloadLocation struct {
 	object *s3.GetObjectInput
 }
 
-func (a *S3Accessor) downloadArtifacts(ctx context.Context, outDir string, dlLoc []downloadLocation) error {
+func (a *S3Accessor) downloadArtifacts(ctx context.Context, dlLoc []downloadLocation) error {
 	for _, dl := range dlLoc {
 		obj, file := dl.object, dl.file
 
@@ -256,6 +287,11 @@ func (a *S3Accessor) downloadArtifacts(ctx context.Context, outDir string, dlLoc
 }
 
 func (a *S3Accessor) downloadArtifact(ctx context.Context, file string, obj *s3.GetObjectInput) error {
+	baseDir, _ := filepath.Split(file)
+	if err := os.MkdirAll(baseDir, 0775); err != nil {
+		return errors.Wrap(err, "couldn't create directories to write downloaded artifact to")
+	}
+
 	fd, err := os.Create(file)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating file to hold rda output from s3")

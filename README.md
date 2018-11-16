@@ -80,9 +80,13 @@ The output of this is a json message, that includes a field "jobId" whos values 
 
 This command returns all the job ids that are listed in your GBDX customer data bucket under the rda prefix.  You should be able to `status`, `download`, or `watch` these jobs.
 
+You can optionally provide a job id as an argument; if you do so, you will be returned a list of the objects that can be downloaded for that job id.
+
 #### `rda job download`
 
-`download` will download all the outputs for the given job id that are in S3.  If the job is not in the "complete" state, you will get an error.  Use the `watch` subcommand to watch a job and greedily download outputs as they arrive.
+`download` will download all the outputs for the given job id that are in S3.  Use the `watch` subcommand to watch a job and greedily download outputs as they arrive.
+
+Note that you can also provide the path to an individual object (e.g. a path returned from `rda job downloadable` where you provide a job id as an argument) to pull down just that object.  This is implemented via prefix matching, so in reality you can provide a prefix to match as the job id and all matching objects will be returned.  This is similar to how the aws cli command functions.
 
 #### `rda job status`
 

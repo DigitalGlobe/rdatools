@@ -96,10 +96,15 @@ var statusCmd = &cobra.Command{
 
 // downloadableCmd represents the downloadable command
 var downloadableCmd = &cobra.Command{
-	Use:   "downloadable",
+	Use:   "downloadable <job id>*",
 	Short: "returns the list of RDA batch materialization job ids found in the GBDX customer data bucket",
-	Long:  `returns the list of RDA batch materialization job ids found in the GBDX customer data bucket; these are available for download`,
-	Args:  cobra.ExactArgs(0),
+	Long: `returns the list of RDA batch materialization job ids found in the GBDX customer data bucket 
+
+The returned job ids are available for download, although they may not 
+be completed.  You can status them via "rda job status". If you specifiy 
+a job id as the second argument, you will instead get a list of all 
+objects associated with that job id.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		client, writeConfig, err := newClient(ctx)
@@ -116,11 +121,22 @@ var downloadableCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		jobIDs, err := accessor.RDABatchJobPrefixes(ctx)
+
+		// Return a listing of all available job ids if no job id was specified.
+		if len(args) == 0 {
+			jobIDs, err := accessor.RDABatchJobPrefixes(ctx)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(os.Stdout).Encode(jobIDs)
+		}
+
+		// Return a list of all objects associated with this job id.
+		paths, err := accessor.RDABatchJobObjects(ctx, args[0])
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(os.Stdout).Encode(jobIDs)
+		return json.NewEncoder(os.Stdout).Encode(paths)
 	},
 }
 
@@ -158,8 +174,12 @@ var rmCmd = &cobra.Command{
 var downloadCmd = &cobra.Command{
 	Use:   "download <outdir> <job id>",
 	Short: "download RDA batch job artifacts to the output directory",
-	Long:  `download RDA batch job artifacts to the output directory; ourdir will be created if it doesn't exist`,
-	Args:  cobra.ExactArgs(2),
+	Long: `download RDA batch job artifacts to the output directory
+ 
+outdir will be created if it doesn't exist. If you specify the full path 
+(vs just the job id) to a file, it will only download that particular file 
+rather than the entire job contents.`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		outDir, jobID := args[0], args[1]
 
@@ -188,18 +208,6 @@ var downloadCmd = &cobra.Command{
 			}
 		}()
 
-		jobs, err := rda.FetchBatchStatus(ctx, client, jobID)
-		if err != nil {
-			return err
-		}
-		if len(jobs) != 1 {
-			return errors.Errorf("no job found found for job id %s", jobID)
-		}
-
-		if jobs[0].Status.Status != "complete" {
-			return errors.Errorf("cannot download a job that isn't complete, job status is %q", jobs[0].Status.Status)
-		}
-
 		accessor, err := gbdx.NewS3Accessor(client)
 		if err != nil {
 			return err
@@ -209,6 +217,11 @@ var downloadCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if numArtifacts == 0 {
+			fmt.Println("no artifacts to download")
+			return nil
+		}
+
 		bar := pb.StartNew(numArtifacts)
 		tStart := time.Now()
 		gbdx.WithProgressFunc(bar.Increment)(accessor)
