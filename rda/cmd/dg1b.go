@@ -22,8 +22,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
 	"github.com/spf13/cobra"
@@ -73,24 +75,43 @@ var dg1bPartsCmd = &cobra.Command{
 			return err
 		}
 
-		for _, band := range []struct {
-			name  string
+		type BandSummary struct {
+			NumParts int      `json:"numParts"`
+			ImageIDs []string `json:"imageIDs"`
+		}
+		summary := struct {
+			Cavis *BandSummary `json:"cavis,omitempty"`
+			Pan   *BandSummary `json:"pan,omitempty"`
+			NVIR  *BandSummary `json:"nvir,omitempty"`
+			SWIR  *BandSummary `json:"swir,omitempty"`
+		}{}
+		for _, bandType := range []struct {
+			bs    **BandSummary
 			parts []rda.ImageMetadata
 		}{
-			{"CAVIS", parts.CavisImages},
-			{"PAN", parts.PanImages},
-			{"NVIR", parts.VNIRImages},
-			{"SWIR", parts.SWIRImages},
+			{&summary.Cavis, parts.CavisImages},
+			{&summary.Pan, parts.PanImages},
+			{&summary.NVIR, parts.VNIRImages},
+			{&summary.SWIR, parts.SWIRImages},
 		} {
-			if len(band.parts) == 0 {
+			if len(bandType.parts) == 0 {
 				continue
 			}
-			fmt.Printf("%s:\n", band.name)
-			for i, part := range band.parts {
-				fmt.Printf("  Part %d, RDA Image ID: %s\n", i+1, part.ImageID)
+			bs := BandSummary{NumParts: len(bandType.parts)}
+			for _, part := range bandType.parts {
+				bs.ImageIDs = append(bs.ImageIDs, part.ImageID)
 			}
+			*bandType.bs = &bs
 		}
-		return nil
+		return json.NewEncoder(os.Stdout).Encode(&summary)
+	},
+}
+
+var dg1bRealizeCmd = &cobra.Command{
+	Use:   "realize",
+	Short: "realize the 1B image",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("realize called")
 	},
 }
 
@@ -98,4 +119,5 @@ func init() {
 	rootCmd.AddCommand(dg1bCmd)
 	dg1bCmd.AddCommand(dg1bMetadataCmd)
 	dg1bCmd.AddCommand(dg1bPartsCmd)
+	dg1bCmd.AddCommand(dg1bRealizeCmd)
 }
