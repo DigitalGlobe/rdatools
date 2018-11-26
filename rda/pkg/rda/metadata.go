@@ -25,6 +25,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"time"
 
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
@@ -133,6 +134,9 @@ type ImageMetadata struct {
 	TileXSize int
 	TileYSize int
 	TileWindow
+
+	AcquisitionDate time.Time
+	ImageID         string
 }
 
 // TileWindow contains tile specific metadata.
@@ -301,4 +305,32 @@ func StripInfo(client *retryablehttp.Client, w io.Writer, catalogID string, zipp
 	}
 	_, err = io.Copy(w, res.Body)
 	return errors.Wrapf(err, "failed writing zipped response from %s", ep)
+}
+
+// ImageParts describes the images that compose a DigitalGlobe Catalog ID.
+type ImageParts struct {
+	CatID       string `json:"catalogIdentifier"`
+	CavisImages []ImageMetadata
+	PanImages   []ImageMetadata
+	SWIRImages  []ImageMetadata
+	VNIRImages  []ImageMetadata
+}
+
+// PartSummary returns information describing the DG 1B parts stored in RDA.
+func PartSummary(client *retryablehttp.Client, catalogID string) (*ImageParts, error) {
+	ep := urls.stripinfoURL(catalogID, false)
+	res, err := client.Get(ep)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failure requesting %s", ep)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, errors.Errorf("failed fetching strip info from %s, HTTP Status: %s", ep, res.Status)
+	}
+
+	var parts ImageParts
+	if err := json.NewDecoder(res.Body).Decode(&parts); err != nil {
+		return nil, errors.Wrapf(err, "couldn't unmarshal response from %s", ep)
+	}
+	return &parts, nil
 }
