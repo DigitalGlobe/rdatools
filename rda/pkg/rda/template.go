@@ -105,6 +105,23 @@ func WithProgressFunc(progressFunc func() int) TemplateOption {
 	}
 }
 
+// Describe returns a description of the RDA template.
+func (t *Template) Describe() (*Graph, error) {
+	ep := urls.describeURL(t.templateID)
+
+	res, err := t.client.Get(ep)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to form GET for fetching template description")
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, ResponseToError(res.Body, fmt.Sprintf("failed fetching template description from %s, HTTP Status: %s", ep, res.Status))
+	}
+
+	return NewGraphFromAPI(res.Body)
+}
+
 // Metadata returns the RDA metadata describing the template.
 func (t *Template) Metadata() (*Metadata, error) {
 	ep, err := urls.metadataURL(t.templateID, t.queryParams)

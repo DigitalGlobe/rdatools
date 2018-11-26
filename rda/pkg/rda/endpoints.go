@@ -47,6 +47,9 @@ type endpoints struct {
 	// stripinfo is the endpoint for fetching metadata about a given DG catalog id.
 	stripinfo string
 
+	// describe is the endpoint for describing a RDA template
+	describe string
+
 	// metadata is the endpoint for fetching template metadata
 	metadata string
 
@@ -71,6 +74,7 @@ func newEndpoints(base string) endpoints {
 
 		operator:  "operator",
 		stripinfo: "stripMetadata/%s",
+		describe:  "template/%s",
 		metadata:  "template/%s/metadata",
 		tile:      "template/%s/tile/%d/%d",
 		batch:     "template/materialize",
@@ -110,6 +114,10 @@ func (e *endpoints) jobURL(jobID string) string {
 
 func (e *endpoints) batchURL() string {
 	return e.formURL(e.batch)
+}
+
+func (e *endpoints) describeURL(templateID string) string {
+	return e.formURL(fmt.Sprintf(e.describe, templateID))
 }
 
 func (e *endpoints) metadataURL(templateID string, queryParams url.Values) (string, error) {
