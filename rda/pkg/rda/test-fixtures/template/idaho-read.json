@@ -1,0 +1,14 @@
+{
+  "edges": [],
+  "nodes": [
+    {
+      "id": "IdahoRead",
+      "operator": "IdahoRead",
+      "parameters": {
+        "bucketName": "${bucketName}",
+        "imageId": "${imageId}",
+        "targetGSD": "${GSD}"
+      }
+    }
+  ]
+}

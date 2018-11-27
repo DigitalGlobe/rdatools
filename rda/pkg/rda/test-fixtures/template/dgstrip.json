@@ -1,0 +1,45 @@
+{
+  "DefaultNodeID": "2",
+  "Edges": [
+    {
+      "ID": "3",
+      "Index": 1,
+      "Source": "0",
+      "Destination": "1"
+    },
+    {
+      "ID": "4",
+      "Index": 1,
+      "Source": "1",
+      "Destination": "2"
+    }
+  ],
+  "Nodes": [
+    {
+      "ID": "0",
+      "Operator": "DigitalGlobeStrip",
+      "Parameters": {
+        "CRS": "${crs:-UTM}",
+        "GSD": "${GSD}",
+        "bands": "${bands:-MS}",
+        "catId": "${catalogId}",
+        "correctionType": "${correctionType:-DN}",
+        "fallbackToTOA": "${fallbackToTOA}"
+      }
+    },
+    {
+      "ID": "1",
+      "Operator": "UniversalDRA",
+      "Parameters": {
+        "draType": "${draType:-None}"
+      }
+    },
+    {
+      "ID": "2",
+      "Operator": "SmartBandSelect",
+      "Parameters": {
+        "bandSelection": "${bandSelection:-All}"
+      }
+    }
+  ]
+}
