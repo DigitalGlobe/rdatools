@@ -23,6 +23,7 @@ package rda
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,24 +87,20 @@ func NewGraphFromAPI(r io.Reader) (*Graph, error) {
 		g.edges[srcID] = append(g.edges[srcID], edge{nIdx: dstID, eIdx: e.Index})
 	}
 
-	// Check for cycles.
-	c := g.findCycle()
-	if c != nil {
-		ids := []string{}
-		for _, n := range c {
-			ids = append(ids, strconv.Itoa(n))
-		}
-		return nil, errors.Errorf("the input graph contains a cycle: %s", strings.Join(ids, " -> "))
+	// Find a default node (this also makes sure g is a DAG).
+	defNodeIdx, err := g.findDefaultNode()
+	if err != nil {
+		return nil, err
 	}
+	log.Println(g.nodes[defNodeIdx])
 
-	// TODO: get the transverse ordering of the graph so we can select a default node.
-
+	// If given a default node in the body, use that instead.
 	var ok bool
 	if g.defaultNode, ok = idToIdx[resp.DefaultNodeID]; !ok {
 		if resp.DefaultNodeID != "" {
 			return nil, errors.Errorf("the default node id %q is not listed as a node", resp.DefaultNodeID)
 		}
-		// Do some sort of traversal?
+		g.defaultNode = defNodeIdx
 	}
 
 	return &g, nil
@@ -173,32 +170,69 @@ func (g *Graph) MarshalJSON() ([]byte, error) {
 }
 
 // findCycle returns a cycle found in g; if there is no cycle, an empty slice is returned.
-func (g *Graph) findCycle() []int {
+func (g *Graph) findDefaultNode() (int, error) {
+	// Check for cycles (e.g. is it a DAG), get a topological sort.
 	c := newCycles(g)
 	for nIdx := range g.nodes {
 		if c.cycle != nil {
 			break
 		}
+		if c.marked[nIdx] {
+			continue
+		}
+
 		c.findCycle(nIdx)
 	}
-	return c.cycle
+	if c.cycle != nil {
+		ids := []string{}
+		for _, n := range c.cycle {
+			ids = append(ids, strconv.Itoa(n))
+		}
+		return 0, errors.Errorf("the input graph contains a cycle: %s", strings.Join(ids, " -> "))
+	}
+
+	// Walking the graph in topological order, cascading distances
+	// to connected nodes lets us determine the longest distance
+	// between nodes in the graph.  We can then select the
+	// terminal node with the maximal distance as our default in
+	// the graph.
+	ndist := make([]int, len(g.nodes))
+	for i := len(g.nodes) - 1; i >= 0; i-- {
+		nIdx := c.postTraversal[i]
+		for _, e := range g.edges[nIdx] {
+			ndist[e.nIdx] = ndist[nIdx] + 1
+		}
+	}
+
+	maxNode := 0
+	maxDist := 0
+	for i, dist := range ndist {
+		if len(g.edges[i]) != 0 || maxDist >= dist {
+			continue
+		}
+		maxDist = dist
+		maxNode = i
+	}
+	return maxNode, nil
 }
 
 // cycles is a helper class for finding cycles in a Graph.
 type cycles struct {
-	g       *Graph
-	onStack []bool
-	marked  []bool
-	edgeTo  []int
-	cycle   []int
+	g             *Graph
+	onStack       []bool
+	marked        []bool
+	edgeTo        []int
+	cycle         []int
+	postTraversal []int
 }
 
 func newCycles(g *Graph) *cycles {
 	return &cycles{
-		g:       g,
-		onStack: make([]bool, len(g.nodes)),
-		marked:  make([]bool, len(g.nodes)),
-		edgeTo:  make([]int, len(g.nodes)),
+		g:             g,
+		onStack:       make([]bool, len(g.nodes)),
+		marked:        make([]bool, len(g.nodes)),
+		edgeTo:        make([]int, len(g.nodes)),
+		postTraversal: make([]int, 0, len(g.nodes)), // postTraversal records a topological ordering of the DAG.
 	}
 }
 
@@ -224,4 +258,5 @@ func (c *cycles) findCycle(nIdx int) {
 			c.cycle = append(c.cycle, nIdx)
 		}
 	}
+	c.postTraversal = append(c.postTraversal, nIdx)
 }

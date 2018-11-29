@@ -26,21 +26,17 @@ import (
 	"testing"
 )
 
-func loadGraph(file string, t *testing.T) *Graph {
+func loadGraph(file string, t *testing.T) (*Graph, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
 
-	g, err := NewGraphFromAPI(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return g
+	return NewGraphFromAPI(f)
 }
 
-func TestHasCycle(t *testing.T) {
+func TestNewGraphFromAPI(t *testing.T) {
 	tests := []struct {
 		testFile string
 		hasCycle bool
@@ -51,12 +47,46 @@ func TestHasCycle(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		g := loadGraph(tc.testFile, t)
-		c := g.findCycle()
-		if tc.hasCycle && c == nil {
+		_, err := loadGraph(tc.testFile, t)
+		if tc.hasCycle && err == nil {
 			t.Fatalf("%q should have a cycle", tc.testFile)
-		} else if !tc.hasCycle && c != nil {
+		} else if !tc.hasCycle && err != nil {
 			t.Fatalf("%q should not have a cycle", tc.testFile)
 		}
+	}
+}
+
+func customGraph() *Graph {
+
+	nodes := []node{}
+	for i := 0; i < 13; i++ {
+		nodes = append(nodes, node{})
+	}
+
+	edges := make([][]edge, 13)
+	edges[0] = []edge{edge{nIdx: 1}, edge{nIdx: 6}}
+	edges[2] = []edge{edge{nIdx: 0}, edge{nIdx: 3}}
+	edges[3] = []edge{edge{nIdx: 5}}
+	edges[5] = []edge{edge{nIdx: 4}}
+	edges[6] = []edge{edge{nIdx: 4}, edge{nIdx: 9}}
+	edges[7] = []edge{edge{nIdx: 6}}
+	edges[8] = []edge{edge{nIdx: 7}}
+	edges[9] = []edge{edge{nIdx: 10}, edge{nIdx: 11}, edge{nIdx: 12}}
+	edges[11] = []edge{edge{nIdx: 12}}
+
+	g := Graph{
+		nodes: nodes,
+		edges: edges,
+	}
+	return &g
+}
+
+func TestCustomGraph(t *testing.T) {
+	// This test is a custom graph that is complicated enough to be a nontrivial test.
+	g := customGraph()
+	if n, err := g.findDefaultNode(); err != nil {
+		t.Fatal(err)
+	} else if n != 12 {
+		t.Fatalf("the default node returned should be 12, not %d", n)
 	}
 }
