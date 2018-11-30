@@ -26,36 +26,98 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 // dg1bCmd represents the dg1b command
 var dg1bCmd = &cobra.Command{
 	Use:   "dg1b",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "commands to access DigitalGlobe 1Bs from RDA",
+	//Hidden: true,
 	// Run: func(cmd *cobra.Command, args []string) {
 	// 	fmt.Println("dg1b called")
 	// },
 }
 
 var dg1bMetadataCmd = &cobra.Command{
-	Use:   "metadata",
-	Short: "metadata describing the 1B image",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("dg1b called")
+	Use:   "metadata <catalog id> <band> <part number>",
+	Short: "metadata describing the 1B image part",
+	Long: `metadata describing the 1B image part
+
+You must provide the catalog id, band (e.g. pan, vnir, swir, or
+cavis), and part number to get (starting at 1), in that order. Use the
+"dg1b parts" command to figure out valid bands and part numbers.`,
+	Args: cobra.ExactArgs(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// The http client.
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
+
+		// Parse the args.
+		catID, bandName := args[0], args[1]
+		partNum, err := strconv.Atoi(args[2])
+		if err != nil {
+			return errors.Errorf("part number %q cannot be converted to an integer", args[2])
+		}
+		if partNum < 1 {
+			return errors.New("part numbers start at 1")
+		}
+		partNum--
+		bandName = strings.ToLower(bandName)
+
+		// Go find the rda image id associated with this part.
+		parts, err := rda.PartSummary(client, catID)
+		if err != nil {
+			return err
+		}
+
+		var images []rda.ImageMetadata
+		switch bandName {
+		case "pan":
+			images = parts.PanImages
+		case "vnir":
+			images = parts.VNIRImages
+		case "swir":
+			images = parts.SWIRImages
+		case "cavis":
+			images = parts.CavisImages
+		default:
+			return errors.Errorf("band argument %q is not of type pan, vnir, swir, or cavis", bandName)
+		}
+		if partNum >= len(images) {
+			return errors.Errorf("band %q has %d parts", bandName, len(images))
+		}
+		imageMD := images[partNum]
+
+		// Get the metadata.
+		template := rda.NewTemplate("848c481257a100ae373523df9f23c0176484b6f63757e9e58d2fa9c2d2af12d9", client, // template ID created by uploading the idaho read operator to RDA
+			rda.AddParameter("imageId", imageMD.ImageID),
+			rda.AddParameter("bucketName", imageMD.TileBucketName))
+		md, err := template.Metadata()
+		if err != nil {
+			return err
+		}
+
+		return json.NewEncoder(os.Stdout).Encode(md)
+
 	},
 }
 
 var dg1bPartsCmd = &cobra.Command{
-	Use:   "parts",
+	Use:   "parts <catalog id>",
 	Short: "returns a description of the image parts that compose the 1B image",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

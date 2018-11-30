@@ -137,6 +137,7 @@ type ImageMetadata struct {
 
 	AcquisitionDate time.Time
 	ImageID         string
+	TileBucketName  string
 }
 
 // TileWindow contains tile specific metadata.
