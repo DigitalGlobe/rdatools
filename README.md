@@ -68,7 +68,7 @@ The actual tiles are stored in a directory named `103001000EBC3C00` adjacent to 
 
 `batch` takes all the same flags as `realize` (except the vrt location), but rather than realize the tiles it submits a batch materialization request to RDA.  You will get a response that includes a job id, which as you'll see below you can use to status and download the output of the batch materialization job. For example, running
 ```
-rda dgstrip batch 103001000EBC3C00 103001000EBC3C00-ovr.vrt --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
+rda dgstrip batch 103001000EBC3C00 --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
 ```
 The output of this is a json message, that includes a field "jobId" whos values you can use as described below.
 
