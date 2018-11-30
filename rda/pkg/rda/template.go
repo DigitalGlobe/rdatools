@@ -122,6 +122,32 @@ func (t *Template) Describe() (*Graph, error) {
 	return NewGraphFromAPI(res.Body)
 }
 
+// Upload uploads the graph g to the RDA API, returning the RDA template ID associated with it.
+func (t *Template) Upload(g *Graph) (string, error) {
+	body, err := json.Marshal(g)
+	if err != nil {
+		return "", errors.Wrap(err, "failed forming request body for RDA template upload")
+	}
+
+	res, err := t.client.Post(urls.uploadURL(), "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return "", errors.Wrap(err, "failed posting template to RDA")
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return "", ResponseToError(res.Body, fmt.Sprintf("failed posting RDA template, HTTP Status: %s", res.Status))
+	}
+
+	// Decode the response body; should be a Graph with the id filled in.
+	resp := rdaGraph{}
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		return "", errors.Wrap(err, "failed decoding RDA API response after posting an rda graph")
+	}
+
+	return resp.ID, nil
+}
+
 // Metadata returns the RDA metadata describing the template.
 func (t *Template) Metadata() (*Metadata, error) {
 	ep, err := urls.metadataURL(t.templateID, t.queryParams)

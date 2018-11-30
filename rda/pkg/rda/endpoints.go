@@ -47,6 +47,9 @@ type endpoints struct {
 	// stripinfo is the endpoint for fetching metadata about a given DG catalog id.
 	stripinfo string
 
+	// upload is the endpoint for uploading an RDA template
+	upload string
+
 	// describe is the endpoint for describing a RDA template
 	describe string
 
@@ -74,6 +77,7 @@ func newEndpoints(base string) endpoints {
 
 		operator:  "operator",
 		stripinfo: "stripMetadata/%s",
+		upload:    "template",
 		describe:  "template/%s",
 		metadata:  "template/%s/metadata",
 		tile:      "template/%s/tile/%d/%d",
@@ -114,6 +118,10 @@ func (e *endpoints) jobURL(jobID string) string {
 
 func (e *endpoints) batchURL() string {
 	return e.formURL(e.batch)
+}
+
+func (e *endpoints) uploadURL() string {
+	return e.formURL(e.upload)
 }
 
 func (e *endpoints) describeURL(templateID string) string {

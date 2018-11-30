@@ -76,16 +76,16 @@ Edge ID fields are not required, and will be overwritten.
 You can specifiy a "-" as the path and it will read the template from an input pipe`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// ctx := context.Background()
-		// client, writeConfig, err := newClient(ctx)
-		// if err != nil {
-		// 	return err
-		// }
-		// defer func() {
-		// 	if err := writeConfig(); err != nil {
-		// 		log.Printf("on exit, received an error when writing configuration, err: %v", err)
-		// 	}
-		// }()
+		ctx := context.Background()
+		client, writeConfig, err := newClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := writeConfig(); err != nil {
+				log.Printf("on exit, received an error when writing configuration, err: %v", err)
+			}
+		}()
 
 		var r io.Reader
 		switch file := args[0]; file {
@@ -105,7 +105,15 @@ You can specifiy a "-" as the path and it will read the template from an input p
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(os.Stdout).Encode(&g)
+		template := rda.NewTemplate(args[0], client)
+		id, err := template.Upload(g)
+		if err != nil {
+			return err
+		}
+
+		return json.NewEncoder(os.Stdout).Encode(struct {
+			ID string `json:"id"`
+		}{ID: id})
 	},
 }
 

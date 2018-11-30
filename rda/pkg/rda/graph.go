@@ -22,6 +22,7 @@ package rda
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -32,18 +33,23 @@ import (
 
 // rdaGraph is the representation that the RDA API uses for describing a graph/template.
 type rdaGraph struct {
-	DefaultNodeID string
-	Edges         []struct {
-		ID          string // ID is never needed by us, but the RDA API expects it.
-		Index       int    // Index is the order in which this edge is fed into its desitination node; this is an artifact of how JAI works.
-		Source      string
-		Destination string
-	}
-	Nodes []struct {
-		ID         string
-		Operator   string
-		Parameters map[string]string
-	}
+	ID            string    `json:",omitempty"`
+	DefaultNodeID string    `json:"defaultNodeId"`
+	Edges         []rdaEdge `json:"edges"`
+	Nodes         []rdaNode `json:"nodes"`
+}
+
+type rdaEdge struct {
+	ID          string `json:"id"`    // ID is never needed by us, but the RDA API expects it.
+	Index       int    `json:"index"` // Index is the order in which this edge is fed into its desitination node; this is an artifact of how JAI works.
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+}
+
+type rdaNode struct {
+	ID         string            `json:"id"`
+	Operator   string            `json:"operator"`
+	Parameters map[string]string `json:"parameters"`
 }
 
 // NewGraphFromAPI creates a Graph from the repsonse body provided by the RDA API.
@@ -145,21 +151,12 @@ func (g *Graph) toRDA() *rdaGraph {
 		DefaultNodeID: g.nodes[g.defaultNode].ID,
 	}
 	for _, n := range g.nodes {
-		rg.Nodes = append(rg.Nodes, struct {
-			ID         string
-			Operator   string
-			Parameters map[string]string
-		}{n.ID, n.Operator, n.Parameters})
+		rg.Nodes = append(rg.Nodes, rdaNode{n.ID, n.Operator, n.Parameters})
 	}
 	eNum := 0
 	for srcID, eList := range g.edges {
 		for _, e := range eList {
-			rg.Edges = append(rg.Edges, struct {
-				ID          string
-				Index       int
-				Source      string
-				Destination string
-			}{strconv.Itoa(eNum), e.sourceIndex, g.nodes[srcID].ID, g.nodes[e.nIdx].ID})
+			rg.Edges = append(rg.Edges, rdaEdge{fmt.Sprintf("edge-%d", eNum), e.sourceIndex, g.nodes[srcID].ID, g.nodes[e.nIdx].ID})
 			eNum++
 		}
 	}
