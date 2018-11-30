@@ -1,0 +1,227 @@
+{
+  "id": "f786d49389aea00866c22a4ee560c12bac349680957575a25c603b91b1ee6f74",
+  "edges": [
+    {
+      "id": "4a724569-01ac-493a-85ef-8507550a32b5",
+      "index": 2,
+      "source": "Crop_tup8ou",
+      "destination": "supercube"
+    },
+    {
+      "id": "b7f0e06b-277a-479d-9149-9276014ed7ff",
+      "index": 1,
+      "source": "Orthorectify_zbhf1l",
+      "destination": "Crop_vyoejw"
+    },
+    {
+      "id": "8ca10f3b-ba0e-4e39-9b3a-f809eef709bc",
+      "index": 1,
+      "source": "Orthorectify_bvjf0n",
+      "destination": "Crop_tup8ou"
+    },
+    {
+      "id": "051baaad-2fb7-4d2c-9dd6-fa25a3f15c51",
+      "index": 1,
+      "source": "TOAReflectance_ghhj1b",
+      "destination": "Orthorectify_zbhf1l"
+    },
+    {
+      "id": "7dc1776e-956f-4a0a-a99c-e935eb8905b0",
+      "index": 1,
+      "source": "supercube",
+      "destination": "quartz"
+    },
+    {
+      "id": "03688954-b9b2-404d-9242-4ba9877778af",
+      "index": 1,
+      "source": "SWIR_SOURCE",
+      "destination": "TOAReflectance_ghhj1b"
+    },
+    {
+      "id": "72af04c9-d3d0-45a8-9aef-cd51e80f11e3",
+      "index": 1,
+      "source": "supercube",
+      "destination": "BandSelect_2960dh"
+    },
+    {
+      "id": "b5775423-a0f1-43fb-9d66-6d5d680b8dbb",
+      "index": 1,
+      "source": "supercube",
+      "destination": "tan_asphalt_shingles"
+    },
+    {
+      "id": "3b5b6c96-21a4-4846-bb85-bd0232e5c6e4",
+      "index": 1,
+      "source": "supercube",
+      "destination": "lt_gray_road"
+    },
+    {
+      "id": "ccefa94f-1709-4aad-9b73-b862e902632f",
+      "index": 1,
+      "source": "tan_asphalt_shingles",
+      "destination": "Binarize_qz2s3x"
+    },
+    {
+      "id": "ba6f61c5-6a92-45d2-8c5e-952ae1bb234e",
+      "index": 1,
+      "source": "MS_SOURCE",
+      "destination": "TOAReflectance_lhfoy7"
+    },
+    {
+      "id": "f0fc58b8-600d-4300-b41b-f2ae241fdf27",
+      "index": 1,
+      "source": "TOAReflectance_lhfoy7",
+      "destination": "Orthorectify_bvjf0n"
+    },
+    {
+      "id": "c6dd8f32-0b74-4093-8137-df62ae6172b4",
+      "index": 1,
+      "source": "supercube",
+      "destination": "plastic_greenhouse_roof"
+    },
+    {
+      "id": "f8ca9f40-f761-4a47-8ac5-00e90948746e",
+      "index": 1,
+      "source": "Crop_vyoejw",
+      "destination": "supercube"
+    },
+    {
+      "id": "ea326d9e-f352-42b8-914a-803e61321151",
+      "index": 1,
+      "source": "supercube",
+      "destination": "lawn"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "MS_SOURCE",
+      "operator": "IdahoRead",
+      "parameters": {
+        "bucketName": "idaho-images",
+        "imageId": "1780f535-affa-4e09-b268-e56a30c5bebd",
+        "objectStore": "S3",
+        "targetGSD": ""
+      }
+    },
+    {
+      "id": "Binarize_qz2s3x",
+      "operator": "Binarize",
+      "parameters": {
+        "threshold": "0.25"
+      }
+    },
+    {
+      "id": "TOAReflectance_ghhj1b",
+      "operator": "TOAReflectance",
+      "parameters": {}
+    },
+    {
+      "id": "TOAReflectance_lhfoy7",
+      "operator": "TOAReflectance",
+      "parameters": {}
+    },
+    {
+      "id": "supercube",
+      "operator": "BandMerge",
+      "parameters": {}
+    },
+    {
+      "id": "tan_asphalt_shingles",
+      "operator": "SpectralAngle",
+      "parameters": {
+        "signatures": "[[0.058746,0.069532,0.103009,0.140049,0.145683,0.143662,0.138583,0.135695,0.123524,0.125519,0.12535,0.123811,0.12127,0.119847,0.113299,0.106804]]"
+      }
+    },
+    {
+      "id": "Crop_vyoejw",
+      "operator": "Crop",
+      "parameters": {
+        "x": "0",
+        "width": "4096",
+        "y": "0",
+        "height": "2048"
+      }
+    },
+    {
+      "id": "BandSelect_2960dh",
+      "operator": "BandSelect",
+      "parameters": {
+        "bandIndices": "[15,7,2]"
+      }
+    },
+    {
+      "id": "SWIR_SOURCE",
+      "operator": "IdahoRead",
+      "parameters": {
+        "bucketName": "rda-images-1",
+        "imageId": "759c0a00-7d19-4c34-8ec2-9eb14b75b08a",
+        "objectStore": "S3",
+        "targetGSD": ""
+      }
+    },
+    {
+      "id": "lawn",
+      "operator": "SpectralAngle",
+      "parameters": {
+        "signatures": "[[1.000068,1,0.998072,0.996833,0.99894,1.026363,1.000142,0.997667,0.999974,1.00203,0.999308,0.997151,1.000105,0.99984,0.998247,0.998261]]"
+      }
+    },
+    {
+      "id": "lt_gray_road",
+      "operator": "SpectralAngle",
+      "parameters": {
+        "signatures": "[[0.211735,0.244523,0.289876,0.310622,0.315382,0.318185,0.314095,0.309517,0.315972,0.335019,0.34309,0.34799,0.342279,0.334251,0.332652,0.314038]]"
+      }
+    },
+    {
+      "id": "Orthorectify_zbhf1l",
+      "operator": "Orthorectify",
+      "parameters": {
+        "Requested GSD": "",
+        "Resampling Kernel": "INTERP_NEAREST",
+        "Grid Size": "10",
+        "Sensor Model": "",
+        "Output Coordinate Reference System": "",
+        "Output Pixel to World Transform": "[0.000013, 0.0, 0.0, -0.000013, -115.3925, 36.1546]",
+        "Elevation Source": ""
+      }
+    },
+    {
+      "id": "plastic_greenhouse_roof",
+      "operator": "SpectralAngle",
+      "parameters": {
+        "signatures": "[[0.190357,0.311214,0.415729,0.464786,0.482897,0.492263,0.498593,0.5205,0.504095,0.465079,0.211022,0.27964,0.147851,0.192797,0.110983,0.105397]]"
+      }
+    },
+    {
+      "id": "Crop_tup8ou",
+      "operator": "Crop",
+      "parameters": {
+        "x": "0",
+        "width": "4096",
+        "y": "0",
+        "height": "2048"
+      }
+    },
+    {
+      "id": "quartz",
+      "operator": "SpectralAngle",
+      "parameters": {
+        "signatures": "[[0.712567,0.738687,0.756627,0.764448,0.767891,0.784252,0.792431,0.789709,0.799055,0.801143,0.803617,0.806222,0.8106,0.80379,0.803105,0.808187]]"
+      }
+    },
+    {
+      "id": "Orthorectify_bvjf0n",
+      "operator": "Orthorectify",
+      "parameters": {
+        "Requested GSD": "",
+        "Resampling Kernel": "INTERP_NEAREST",
+        "Grid Size": "10",
+        "Sensor Model": "",
+        "Output Coordinate Reference System": "",
+        "Output Pixel to World Transform": "[0.000013, 0.0, 0.0, -0.000013, -115.3925, 36.1546]",
+        "Elevation Source": ""
+      }
+    }
+  ]
+}

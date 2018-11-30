@@ -36,6 +36,7 @@ func loadGraph(file string, t *testing.T) (*Graph, error) {
 	return NewGraphFromAPI(f)
 }
 
+// TestNewGraphFromAPI checks that we can load valid graphs, and reject those that aren't DAGs.
 func TestNewGraphFromAPI(t *testing.T) {
 	tests := []struct {
 		testFile string
@@ -43,7 +44,10 @@ func TestNewGraphFromAPI(t *testing.T) {
 	}{
 		{filepath.Join("test-fixtures", "template", "idaho-read.json"), false},
 		{filepath.Join("test-fixtures", "template", "dgstrip.json"), false},
+		{filepath.Join("test-fixtures", "template", "building-change.json"), false},
+		{filepath.Join("test-fixtures", "template", "spectral.json"), false},
 		{filepath.Join("test-fixtures", "template", "dgstrip-with-cycle.json"), true},
+		{filepath.Join("test-fixtures", "template", "spectral-with-cycle.json"), true},
 	}
 
 	for _, tc := range tests {
@@ -52,6 +56,30 @@ func TestNewGraphFromAPI(t *testing.T) {
 			t.Fatalf("%q should have a cycle", tc.testFile)
 		} else if !tc.hasCycle && err != nil {
 			t.Fatalf("%q should not have a cycle", tc.testFile)
+		}
+	}
+}
+
+// TestNewGraphFromAPIDefaultNode checks if the loaded graph has the correct default node selected.
+func TestNewGraphFromAPIDefaultNode(t *testing.T) {
+	tests := []struct {
+		testFile string
+		defNode  int
+	}{
+		{filepath.Join("test-fixtures", "template", "idaho-read.json"), 0},
+		{filepath.Join("test-fixtures", "template", "dgstrip.json"), 2},
+		{filepath.Join("test-fixtures", "template", "building-change.json"), 13},
+		{filepath.Join("test-fixtures", "template", "spectral.json"), 1},
+		{filepath.Join("test-fixtures", "template", "spectral-defnode.json"), 14}, // This one specifies which node is default.
+	}
+
+	for _, tc := range tests {
+		g, err := loadGraph(tc.testFile, t)
+		if err != nil {
+			t.Fatalf("failed loading %q as a graph", tc.testFile)
+		}
+		if g.defaultNode != tc.defNode {
+			t.Fatalf("default node %d != %d for %q", g.defaultNode, tc.defNode, tc.testFile)
 		}
 	}
 }

@@ -71,6 +71,8 @@ var templateUploadCmd = &cobra.Command{
 	Short: "upload uploads a RDA template to the RDA API, returning a template id for it",
 	Long: `upload uploads a RDA template to the RDA API, returning a template id for it
 
+Edge ID fields are not required, and will be overwritten. 
+
 You can specifiy a "-" as the path and it will read the template from an input pipe`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -98,6 +100,7 @@ You can specifiy a "-" as the path and it will read the template from an input p
 			r = f
 		}
 
+		// We parse the graph in part to figure out if its valid rather than just passing it through.
 		g, err := rda.NewGraphFromAPI(r)
 		if err != nil {
 			return err

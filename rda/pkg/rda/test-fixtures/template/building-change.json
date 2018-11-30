@@ -1,0 +1,204 @@
+{
+  "id": "4b2813e96238135f222e47cba91f892130b812b589302e46bcca9e9765e27344",
+  "edges": [
+    {
+      "id": "56f5c752-f0f6-4216-8111-2af9efd18495",
+      "index": 1,
+      "source": "GeospatialCrop_ix4yx6",
+      "destination": "HistogramDRA_uywv49"
+    },
+    {
+      "id": "cc3684e2-6581-4911-9e05-fbd854edc2a4",
+      "index": 2,
+      "source": "BandSelect_opmlf6",
+      "destination": "BandMerge_chpocj"
+    },
+    {
+      "id": "c70b85be-f443-49d3-9172-358129e64349",
+      "index": 1,
+      "source": "DigitalGlobeImage_xbl8qp",
+      "destination": "Reproject_pevapt"
+    },
+    {
+      "id": "f6223edc-e988-457b-96d4-48af7858b97e",
+      "index": 1,
+      "source": "StreamingML_2ga1d5",
+      "destination": "BandSelect_opmlf6"
+    },
+    {
+      "id": "9bdb5c19-d8a5-499a-a56d-59c1bdd675f6",
+      "index": 1,
+      "source": "2010_image",
+      "destination": "StreamingML_ruvyrz"
+    },
+    {
+      "id": "10236993-b36a-4dfa-8958-1c4633af8671",
+      "index": 1,
+      "source": "DigitalGlobeImage_e9ctlx",
+      "destination": "GeospatialCrop_tipo68"
+    },
+    {
+      "id": "430db2e9-67e1-4af6-94f5-73d9242b9eca",
+      "index": 1,
+      "source": "HistogramDRA_k1hm5e",
+      "destination": "2010_image"
+    },
+    {
+      "id": "95c58496-1758-43de-94ac-dcd5026dac56",
+      "index": 1,
+      "source": "BandSelect_qtmoz4",
+      "destination": "BandMerge_chpocj"
+    },
+    {
+      "id": "830e4718-3798-4ef4-924c-1ee7b08ae157",
+      "index": 1,
+      "source": "GeospatialCrop_tipo68",
+      "destination": "HistogramDRA_k1hm5e"
+    },
+    {
+      "id": "9a8eedce-81ad-456b-b3ab-529da2aa7d4b",
+      "index": 1,
+      "source": "2018_image",
+      "destination": "StreamingML_2ga1d5"
+    },
+    {
+      "id": "68858554-c4d9-4e2a-91bd-6352426ff92d",
+      "index": 1,
+      "source": "StreamingML_ruvyrz",
+      "destination": "BandSelect_qtmoz4"
+    },
+    {
+      "id": "af2eff2a-827a-4bda-85d2-d3cef6692ce5",
+      "index": 1,
+      "source": "Reproject_pevapt",
+      "destination": "GeospatialCrop_ix4yx6"
+    },
+    {
+      "id": "07ca66d0-fd42-4222-aaec-0b6377ed9a44",
+      "index": 1,
+      "source": "HistogramDRA_uywv49",
+      "destination": "2018_image"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "HistogramDRA_k1hm5e",
+      "operator": "HistogramDRA",
+      "parameters": {
+        "lowCutoff": "0.02",
+        "highCutoff": "0.99",
+        "gamma": "1.3"
+      }
+    },
+    {
+      "id": "HistogramDRA_uywv49",
+      "operator": "HistogramDRA",
+      "parameters": {
+        "lowCutoff": "0.02",
+        "highCutoff": "0.98",
+        "gamma": "1.3"
+      }
+    },
+    {
+      "id": "BandSelect_qtmoz4",
+      "operator": "BandSelect",
+      "parameters": {
+        "bandIndices": "[0,1]"
+      }
+    },
+    {
+      "id": "DigitalGlobeImage_e9ctlx",
+      "operator": "DigitalGlobeImage",
+      "parameters": {
+        "bucketName": "idaho-images",
+        "imageId": "e71bf582-d2dd-4f64-a0d3-1ab72b164cba",
+        "CRS": "UTM",
+        "correctionType": "DN",
+        "GSD": "",
+        "fallbackToTOA": "false",
+        "bands": "PANSHARP"
+      }
+    },
+    {
+      "id": "DigitalGlobeImage_xbl8qp",
+      "operator": "DigitalGlobeImage",
+      "parameters": {
+        "bucketName": "rda-images-1",
+        "imageId": "4fb46d69-83ed-4176-9b56-3ccaa79f28a4",
+        "CRS": "UTM",
+        "correctionType": "DN",
+        "GSD": "",
+        "fallbackToTOA": "false",
+        "bands": "PANSHARP"
+      }
+    },
+    {
+      "id": "GeospatialCrop_tipo68",
+      "operator": "GeospatialCrop",
+      "parameters": {
+        "geospatialWKT": "POLYGON ((710322.177479721 7503929.24177167,705685.720447448 7503992.06448495,705789.755121917 7511768.11303692,710428.56065033 7511705.44398287,710322.177479721 7503929.24177167))"
+      }
+    },
+    {
+      "id": "Reproject_pevapt",
+      "operator": "Reproject",
+      "parameters": {
+        "Dest pixel-to-world transform": "[0.478, 0.0, 0.0, -0.478, 694244.7268131563, 7514330.168307558]",
+        "Resampling Kernel": "INTERP_BILINEAR",
+        "Source SRS Code": "",
+        "Source pixel-to-world transform": "",
+        "Dest SRS Code": "EPSG:32733",
+        "Background Values": "[0]"
+      }
+    },
+    {
+      "id": "2018_image",
+      "operator": "SmartBandSelect",
+      "parameters": {
+        "bandSelection": "RGB"
+      }
+    },
+    {
+      "id": "GeospatialCrop_ix4yx6",
+      "operator": "GeospatialCrop",
+      "parameters": {
+        "geospatialWKT": "POLYGON ((710322.177479721 7503929.24177167,705685.720447448 7503992.06448495,705789.755121917 7511768.11303692,710428.56065033 7511705.44398287,710322.177479721 7503929.24177167))"
+      }
+    },
+    {
+      "id": "BandSelect_opmlf6",
+      "operator": "BandSelect",
+      "parameters": {
+        "bandIndices": "[0]"
+      }
+    },
+    {
+      "id": "StreamingML_2ga1d5",
+      "operator": "StreamingML",
+      "parameters": {
+        "Mode": "segmentation",
+        "SagemakerEndpoint": "building-segmenter"
+      }
+    },
+    {
+      "id": "StreamingML_ruvyrz",
+      "operator": "StreamingML",
+      "parameters": {
+        "Mode": "segmentation",
+        "SagemakerEndpoint": "building-segmenter"
+      }
+    },
+    {
+      "id": "2010_image",
+      "operator": "SmartBandSelect",
+      "parameters": {
+        "bandSelection": "RGB"
+      }
+    },
+    {
+      "id": "BandMerge_chpocj",
+      "operator": "BandMerge",
+      "parameters": {}
+    }
+  ]
+}

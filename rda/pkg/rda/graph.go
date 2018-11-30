@@ -23,7 +23,6 @@ package rda
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,14 +62,17 @@ func NewGraphFromAPI(r io.Reader) (*Graph, error) {
 	})
 
 	// Build the graph.
-	idToIdx := map[string]int{}
 	g := Graph{
 		nodes: make([]node, 0, len(resp.Nodes)),
 		edges: make([][]edge, len(resp.Nodes)),
 	}
+	idToIdx := map[string]int{}
 	for i, n := range resp.Nodes {
 		idToIdx[n.ID] = i
-		g.nodes = append(g.nodes, node{n.Operator, n.Parameters})
+		g.nodes = append(g.nodes, node{n.ID, n.Operator, n.Parameters})
+	}
+	if len(idToIdx) != len(g.nodes) {
+		return nil, errors.Errorf("graph contains %d unique node ids, but has %d nodes", len(g.nodes), len(idToIdx))
 	}
 
 	for _, e := range resp.Edges {
@@ -84,15 +86,14 @@ func NewGraphFromAPI(r io.Reader) (*Graph, error) {
 			return nil, errors.Errorf("the destination %q for edge %+v is not listed as a node", e.Destination, e)
 		}
 
-		g.edges[srcID] = append(g.edges[srcID], edge{nIdx: dstID, eIdx: e.Index})
+		g.edges[srcID] = append(g.edges[srcID], edge{nIdx: dstID, sourceIndex: e.Index})
 	}
 
-	// Find a default node (this also makes sure g is a DAG).
+	// Find a default node, we choose the one with the longest path from its source (this also makes sure g is a DAG).
 	defNodeIdx, err := g.findDefaultNode()
 	if err != nil {
 		return nil, err
 	}
-	log.Println(g.nodes[defNodeIdx])
 
 	// If given a default node in the body, use that instead.
 	var ok bool
@@ -121,13 +122,14 @@ type Graph struct {
 
 // node is a node in an RDA graph.
 type node struct {
+	ID         string
 	Operator   string
 	Parameters map[string]string
 }
 
 type edge struct {
-	nIdx int // nIdx is node index this edge points to.
-	eIdx int // eIdx is needed as RDA cares about the order of edges connecting a destination node.
+	nIdx        int // nIdx is node index this edge points to.
+	sourceIndex int // sourceIndex is needed as RDA cares about the order of edges connecting a destination node.
 }
 
 func (g *Graph) numEdges() int {
@@ -140,16 +142,16 @@ func (g *Graph) numEdges() int {
 
 func (g *Graph) toRDA() *rdaGraph {
 	rg := rdaGraph{
-		DefaultNodeID: strconv.Itoa(g.defaultNode),
+		DefaultNodeID: g.nodes[g.defaultNode].ID,
 	}
-	for srcID, n := range g.nodes {
+	for _, n := range g.nodes {
 		rg.Nodes = append(rg.Nodes, struct {
 			ID         string
 			Operator   string
 			Parameters map[string]string
-		}{strconv.Itoa(srcID), n.Operator, n.Parameters})
+		}{n.ID, n.Operator, n.Parameters})
 	}
-	eNum := len(g.nodes)
+	eNum := 0
 	for srcID, eList := range g.edges {
 		for _, e := range eList {
 			rg.Edges = append(rg.Edges, struct {
@@ -157,7 +159,7 @@ func (g *Graph) toRDA() *rdaGraph {
 				Index       int
 				Source      string
 				Destination string
-			}{strconv.Itoa(eNum), e.eIdx, strconv.Itoa(srcID), strconv.Itoa(e.nIdx)})
+			}{strconv.Itoa(eNum), e.sourceIndex, g.nodes[srcID].ID, g.nodes[e.nIdx].ID})
 			eNum++
 		}
 	}
