@@ -21,11 +21,18 @@
 package rda
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"archive/zip"
 
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
@@ -306,6 +313,57 @@ func StripInfo(client *retryablehttp.Client, w io.Writer, catalogID string, zipp
 	}
 	_, err = io.Copy(w, res.Body)
 	return errors.Wrapf(err, "failed writing zipped response from %s", ep)
+}
+
+// PartMetadata
+func PartMetadata(client *retryablehttp.Client, catalogID, prefix, outDir string) error {
+	if err := os.MkdirAll(outDir, 0775); err != nil {
+		return errors.Wrap(err, "couldn't make directory to write metadata to")
+	}
+
+	// Get all the zipped metadata from RDA.
+	ep := urls.stripinfoURL(catalogID, true)
+	res, err := client.Get(ep)
+	if err != nil {
+		return errors.Wrapf(err, "failure requesting %s", ep)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return errors.Errorf("failed fetching strip info from %s, HTTP Status: %s", ep, res.Status)
+	}
+
+	// We have to get all the bytes down into a io.ReaderAt to be able to unzip the response body.
+	b, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return errors.Wrap(err, "failed reading all the bytes from the reader when extracting metadata from a zip")
+	}
+	br := bytes.NewReader(b)
+	zr, err := zip.NewReader(br, int64(br.Len()))
+	if err != nil {
+		return errors.Wrap(err, "failed creating a zip reader when extracting metadata")
+	}
+
+	// Extract just the files we need from the zipped blob.
+	for _, finfo := range zr.File {
+		if !strings.HasPrefix(finfo.Name, prefix) {
+			continue
+		}
+		f, err := finfo.Open()
+		if err != nil {
+			return errors.Wrapf(err, "failed opening %q in zip file", finfo.Name)
+		}
+
+		file := filepath.Join(outDir, finfo.Name)
+		fout, err := os.Create(file)
+		if err != nil {
+			return errors.Wrapf(err, "failed creating output metadata file %q", fout)
+		}
+		if _, err := io.Copy(fout, f); err != nil {
+			return errors.Wrapf(err, "failed writing output metadata file %q", fout)
+		}
+	}
+
+	return nil
 }
 
 // ImageParts describes the images that compose a DigitalGlobe Catalog ID.

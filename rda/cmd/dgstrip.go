@@ -38,7 +38,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const dgstripTemplateName = "DigitalGlobeStrip"
+const dgstripTemplateID = "DigitalGlobeStrip"
 
 // dgstripRealizeCmd represents the dgstrip command
 var dgstripCmd = &cobra.Command{
@@ -80,7 +80,7 @@ var dgstripRealizeCmd = &cobra.Command{
 
 		// Get the metadata and figure out what RDA tiles need to be downloaded.
 		catID, vrtPath := args[0], args[1]
-		template := rda.NewTemplate(dgstripTemplateName, client, dgstripTemplateOptions(catID)...)
+		template := rda.NewTemplate(dgstripTemplateID, client, dgstripTemplateOptions(catID)...)
 		md, err := template.Metadata()
 		if err != nil {
 			return err
@@ -152,7 +152,7 @@ var dgstripBatchCmd = &cobra.Command{
 
 		// Get the metadata and figure out what RDA tiles need to be downloaded.
 		catID := args[0]
-		template := rda.NewTemplate(dgstripTemplateName, client, dgstripTemplateOptions(catID)...)
+		template := rda.NewTemplate(dgstripTemplateID, client, dgstripTemplateOptions(catID)...)
 
 		// If we were given a subwindow, figure out its
 		// mapping to RDA tiles.
@@ -197,7 +197,7 @@ var dgstripMetadataCmd = &cobra.Command{
 
 		// Get the metadata.
 		catID := args[0]
-		template := rda.NewTemplate(dgstripTemplateName, client, dgstripTemplateOptions(catID)...)
+		template := rda.NewTemplate(dgstripTemplateID, client, dgstripTemplateOptions(catID)...)
 		md, err := template.Metadata()
 		if err != nil {
 			return err
