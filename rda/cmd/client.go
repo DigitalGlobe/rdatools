@@ -21,10 +21,14 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"io/ioutil"
+	"net/http"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/gbdx"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 )
 
@@ -40,8 +44,28 @@ func newClient(ctx context.Context) (*retryablehttp.Client, func() error, error)
 	// Configure http retrying.
 	client := retryablehttp.NewClient()
 	client.HTTPClient = oauth2.NewClient(ctx, ts)
-	client.Logger = nil
+	debug := viper.GetBool("debug")
+	if !debug {
+		client.Logger = nil
+	} else {
+		client.RequestLogHook = func(l retryablehttp.Logger, r *http.Request, reqNum int) {
+			// Log the request body, if there is one.
+			if r.Body == nil {
+				return
+			}
 
+			// We have to copy the body and add it back to
+			// the request, otherwise the request body is
+			// already read when it comes time to send it!
+			b, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				l.Printf("error reading request body, err: %+v", err)
+			}
+			r.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+
+			l.Printf("[DEBUG] REQUEST BODY %s", b)
+		}
+	}
 	return client, updateConfig, nil
 }
 

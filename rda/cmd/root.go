@@ -72,7 +72,10 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().String("profile", "default", "RDA profile to use")
+	rootCmd.PersistentFlags().Bool("debug", false, "Debug RDA HTTP requests")
+
 	viper.BindPFlag("profile", rootCmd.PersistentFlags().Lookup("profile"))
+	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 
 	viper.BindEnv("gbdx_username")
 	viper.BindEnv("gbdx_password")
