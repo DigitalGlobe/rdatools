@@ -50,20 +50,32 @@ func newClient(ctx context.Context) (*retryablehttp.Client, func() error, error)
 	} else {
 		client.RequestLogHook = func(l retryablehttp.Logger, r *http.Request, reqNum int) {
 			// Log the request body, if there is one.
-			if r.Body == nil {
+			if reqNum > 0 || r.Body == nil {
 				return
 			}
 
-			// We have to copy the body and add it back to
-			// the request, otherwise the request body is
-			// already read when it comes time to send it!
 			b, err := ioutil.ReadAll(r.Body)
+			r.Body.Close()
 			if err != nil {
 				l.Printf("error reading request body, err: %+v", err)
+				return
 			}
 			r.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 
 			l.Printf("[DEBUG] REQUEST BODY %s", b)
+		}
+
+		client.ResponseLogHook = func(l retryablehttp.Logger, resp *http.Response) {
+			l.Printf("[DEBUG] RESPONSE STATUS %s", resp.Status)
+			if resp.ContentLength > 0 {
+				b, err := ioutil.ReadAll(resp.Body)
+				resp.Body.Close()
+				if err != nil {
+					l.Printf("error reading response body, err: %+v", err)
+				}
+				resp.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+				l.Printf("[DEBUG] RESPONSE BODY %s", b)
+			}
 		}
 	}
 	return client, updateConfig, nil
