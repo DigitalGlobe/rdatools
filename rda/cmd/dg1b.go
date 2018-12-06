@@ -23,13 +23,17 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/DigitalGlobe/rdatools/rda/pkg/rda"
+	"github.com/cheggaaa/pb"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -208,7 +212,7 @@ cavis), part number to get (starting at 1), and output directory. Use the
 		bandName = strings.ToLower(bandName)
 		outDir := args[3]
 
-		// Go find the rda image id associated with this part.
+		// Go find the rda image id associated with this part, buildng the metadata prefix while we're at it.
 		parts, err := rda.PartSummary(client, catID)
 		if err != nil {
 			return err
@@ -235,9 +239,63 @@ cavis), part number to get (starting at 1), and output directory. Use the
 		if partNum >= len(images) {
 			return errors.Errorf("band %q has %d parts", bandName, len(images))
 		}
-		//imageMD := images[partNum]
 
-		return rda.PartMetadata(client, catID, partPrefix, outDir)
+		// Download the metadata and extract the relevent files to outDir.
+		if err := rda.PartMetadata(client, catID, partPrefix, outDir); err != nil {
+			return err
+		}
+
+		// Get the RDA metadata.
+		imageMD := images[partNum]
+		template := rda.NewTemplate(dg1bTemplateID, client,
+			rda.AddParameter("imageId", imageMD.ImageID),
+			rda.AddParameter("bucketName", imageMD.TileBucketName))
+		md, err := template.Metadata()
+		if err != nil {
+			return err
+		}
+		rda.WithWindow(md.ImageMetadata.TileWindow)(template)
+
+		// Download the tiles.
+		bar := pb.StartNew(md.ImageMetadata.NumXTiles * md.ImageMetadata.NumYTiles)
+		rda.WithProgressFunc(bar.Increment)(template)
+
+		tileDir := filepath.Join(outDir, "tiles")
+		tStart := time.Now()
+		tiles, err := template.Realize(ctx, tileDir)
+		if err != nil {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			bar.FinishPrint(fmt.Sprintf("Completed %d of %d 1B tiles before cancellation; rerun the command to pick up where you left off.", len(tiles), md.ImageMetadata.NumXTiles*md.ImageMetadata.NumYTiles))
+		default:
+			bar.FinishPrint(fmt.Sprintf("Tile retrieval took %s", time.Since(tStart)))
+		}
+		if len(tiles) < 1 {
+			return err
+		}
+
+		// Build VRT struct and write it to disk.
+		vrt, err := rda.NewVRT(md, tiles)
+		if err != nil {
+			return err
+		}
+
+		vrtPath := filepath.Join(outDir, partPrefix+".vrt")
+		f, err := os.Create(vrtPath)
+		if err != nil {
+			return errors.Wrap(err, "failed creating VRT for downloaded tiles")
+		}
+		defer f.Close()
+
+		enc := xml.NewEncoder(f)
+		enc.Indent("  ", "    ")
+		if err := enc.Encode(vrt); err != nil {
+			return errors.Wrap(err, "couldn't write our VRT to disk")
+		}
+		return nil
 	},
 }
 

@@ -242,8 +242,8 @@ func (gt *ImageGeoreferencing) hardInvert() (ImageGeoreferencing, error) {
 
 	return ImageGeoreferencing{
 		SpatialReferenceSystemCode: gt.SpatialReferenceSystemCode,
-		ScaleX: gt.ScaleY * invDet,
-		ShearY: -gt.ShearY * invDet,
+		ScaleX:                     gt.ScaleY * invDet,
+		ShearY:                     -gt.ShearY * invDet,
 
 		ShearX: -gt.ShearX * invDet,
 		ScaleY: gt.ScaleX * invDet,
@@ -315,7 +315,13 @@ func StripInfo(client *retryablehttp.Client, w io.Writer, catalogID string, zipp
 	return errors.Wrapf(err, "failed writing zipped response from %s", ep)
 }
 
-// PartMetadata
+// PartMetadata downloads the DG metadata returned by RDA for the
+// given catalog id.  Metadata in this case is the "raw" data that the
+// DG factory provides, not RDA metadata.
+//
+// Note that prefix is used to identify in the zip returned from RDA
+// which files to extract, e.g. PAN_001 would grab all metadata files
+// that start with that string.
 func PartMetadata(client *retryablehttp.Client, catalogID, prefix, outDir string) error {
 	if err := os.MkdirAll(outDir, 0775); err != nil {
 		return errors.Wrap(err, "couldn't make directory to write metadata to")

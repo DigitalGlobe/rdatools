@@ -29,11 +29,11 @@ import (
 )
 
 type VRTDataset struct {
-	XMLName      xml.Name `xml:"VRTDataset"`
-	RasterXSize  int      `xml:",attr"`
-	RasterYSize  int      `xml:",attr"`
-	SRS          string
-	GeoTransform GeoTransform
+	XMLName      xml.Name        `xml:"VRTDataset"`
+	RasterXSize  int             `xml:",attr"`
+	RasterYSize  int             `xml:",attr"`
+	SRS          string          `xml:",omitempty"`
+	GeoTransform *GeoTransform   `xml:",omitempty"`
 	Bands        []VRTRasterBand `xml:"VRTRasterBand"`
 }
 
@@ -135,22 +135,29 @@ func tileExtents(tiles []TileInfo) (minX, minY, maxX, maxY int) {
 func NewVRT(m *Metadata, tiles []TileInfo) (*VRTDataset, error) {
 	minXTile, minYTile, maxXTile, maxYTile := tileExtents(tiles)
 	numXTiles, numYTiles := maxXTile-minXTile+1, maxYTile-minYTile+1
-	tx, ty := m.ImageMetadata.tileGeoTransform.Apply(float64(minXTile), float64(minYTile))
 
 	// The outer container of the VRT.
 	vrt := VRTDataset{
 		RasterXSize: m.ImageMetadata.TileXSize * numXTiles,
 		RasterYSize: m.ImageMetadata.TileYSize * numYTiles,
-		SRS:         m.ImageGeoreferencing.SpatialReferenceSystemCode,
-		GeoTransform: [6]float64{
+		Bands:       make([]VRTRasterBand, 0, m.ImageMetadata.NumBands),
+	}
+
+	if m.ImageMetadata.tileGeoTransform.SpatialReferenceSystemCode != "" {
+		tx, ty := m.ImageMetadata.tileGeoTransform.Apply(float64(minXTile), float64(minYTile))
+		vrt.SRS = m.ImageGeoreferencing.SpatialReferenceSystemCode
+		gt := GeoTransform([6]float64{
 			tx,
 			m.ImageGeoreferencing.ScaleX,
 			m.ImageGeoreferencing.ShearX,
 			ty,
 			m.ImageGeoreferencing.ShearY,
 			m.ImageGeoreferencing.ScaleY,
-		},
-		Bands: make([]VRTRasterBand, 0, m.ImageMetadata.NumBands),
+		})
+		vrt.GeoTransform = &gt
+	} else {
+		// Without geoinformation, we assume we're dealing with a 1B and so we want exact pixel dimensions on the VRT.
+		vrt.RasterXSize, vrt.RasterYSize = m.ImageMetadata.ImageWidth, m.ImageMetadata.ImageHeight
 	}
 
 	// These guys are the same for all the tiles that come back from RDA.
