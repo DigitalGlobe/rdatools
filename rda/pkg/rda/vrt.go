@@ -35,6 +35,18 @@ type VRTDataset struct {
 	SRS          string          `xml:",omitempty"`
 	GeoTransform *GeoTransform   `xml:",omitempty"`
 	Bands        []VRTRasterBand `xml:"VRTRasterBand"`
+	Metadata     *VRTMetadata    `xml:",omitempty"`
+}
+
+type VRTMetadata struct {
+	XMLName xml.Name `xml:"Metadata"`
+	Domain  string   `xml:"domain,attr"`
+	MDI     []MDI
+}
+
+type MDI struct {
+	Key   string      `xml:"key,attr"`
+	Value interface{} `xml:",chardata"`
 }
 
 type GeoTransform [6]float64
@@ -132,7 +144,7 @@ func tileExtents(tiles []TileInfo) (minX, minY, maxX, maxY int) {
 }
 
 // NewVRT returns a populated VRT struct composed of the tiles and metadata given to it.
-func NewVRT(m *Metadata, tiles []TileInfo) (*VRTDataset, error) {
+func NewVRT(m *Metadata, tiles []TileInfo, md Metadatar) (*VRTDataset, error) {
 	minXTile, minYTile, maxXTile, maxYTile := tileExtents(tiles)
 	numXTiles, numYTiles := maxXTile-minXTile+1, maxYTile-minYTile+1
 
@@ -141,6 +153,14 @@ func NewVRT(m *Metadata, tiles []TileInfo) (*VRTDataset, error) {
 		RasterXSize: m.ImageMetadata.TileXSize * numXTiles,
 		RasterYSize: m.ImageMetadata.TileYSize * numYTiles,
 		Bands:       make([]VRTRasterBand, 0, m.ImageMetadata.NumBands),
+	}
+
+	if md != nil {
+		vmd, err := md.ToVRTMetadata()
+		if err != nil {
+			return nil, err
+		}
+		vrt.Metadata = vmd
 	}
 
 	if m.ImageMetadata.tileGeoTransform.SpatialReferenceSystemCode != "" {

@@ -242,8 +242,8 @@ func (gt *ImageGeoreferencing) hardInvert() (ImageGeoreferencing, error) {
 
 	return ImageGeoreferencing{
 		SpatialReferenceSystemCode: gt.SpatialReferenceSystemCode,
-		ScaleX:                     gt.ScaleY * invDet,
-		ShearY:                     -gt.ShearY * invDet,
+		ScaleX: gt.ScaleY * invDet,
+		ShearY: -gt.ShearY * invDet,
 
 		ShearX: -gt.ShearX * invDet,
 		ScaleY: gt.ScaleX * invDet,
@@ -322,54 +322,68 @@ func StripInfo(client *retryablehttp.Client, w io.Writer, catalogID string, zipp
 // Note that prefix is used to identify in the zip returned from RDA
 // which files to extract, e.g. PAN_001 would grab all metadata files
 // that start with that string.
-func PartMetadata(client *retryablehttp.Client, catalogID, prefix, outDir string) error {
+func PartMetadata(client *retryablehttp.Client, catalogID, prefix, outDir string) (*RPCs, error) {
 	if err := os.MkdirAll(outDir, 0775); err != nil {
-		return errors.Wrap(err, "couldn't make directory to write metadata to")
+		return nil, errors.Wrap(err, "couldn't make directory to write metadata to")
 	}
 
 	// Get all the zipped metadata from RDA.
 	ep := urls.stripinfoURL(catalogID, true)
 	res, err := client.Get(ep)
 	if err != nil {
-		return errors.Wrapf(err, "failure requesting %s", ep)
+		return nil, errors.Wrapf(err, "failure requesting %s", ep)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return errors.Errorf("failed fetching strip info from %s, HTTP Status: %s", ep, res.Status)
+		return nil, errors.Errorf("failed fetching strip info from %s, HTTP Status: %s", ep, res.Status)
 	}
 
 	// We have to get all the bytes down into a io.ReaderAt to be able to unzip the response body.
 	b, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return errors.Wrap(err, "failed reading all the bytes from the reader when extracting metadata from a zip")
+		return nil, errors.Wrap(err, "failed reading all the bytes from the reader when extracting metadata from a zip")
 	}
 	br := bytes.NewReader(b)
 	zr, err := zip.NewReader(br, int64(br.Len()))
 	if err != nil {
-		return errors.Wrap(err, "failed creating a zip reader when extracting metadata")
+		return nil, errors.Wrap(err, "failed creating a zip reader when extracting metadata")
 	}
 
 	// Extract just the files we need from the zipped blob.
+	var rpcs *RPCs
 	for _, finfo := range zr.File {
 		if !strings.HasPrefix(finfo.Name, prefix) {
 			continue
 		}
 		f, err := finfo.Open()
 		if err != nil {
-			return errors.Wrapf(err, "failed opening %q in zip file", finfo.Name)
+			return nil, errors.Wrapf(err, "failed opening %q in zip file", finfo.Name)
 		}
 
 		file := filepath.Join(outDir, finfo.Name)
 		fout, err := os.Create(file)
 		if err != nil {
-			return errors.Wrapf(err, "failed creating output metadata file %q", fout)
+			return nil, errors.Wrapf(err, "failed creating output metadata file %q", file)
 		}
 		if _, err := io.Copy(fout, f); err != nil {
-			return errors.Wrapf(err, "failed writing output metadata file %q", fout)
+			fout.Close()
+			return nil, errors.Wrapf(err, "failed writing output metadata file %q", file)
+		}
+		fout.Close()
+
+		if strings.HasSuffix(file, ".XML") {
+			fout, err := os.Open(file)
+			if err != nil {
+				errors.Wrapf(err, "failed opening output metadata file %q", file)
+			}
+			rpcs, err = RPCsFromReader(fout)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	return nil
+	return rpcs, nil
 }
 
 // ImageParts describes the images that compose a DigitalGlobe Catalog ID.

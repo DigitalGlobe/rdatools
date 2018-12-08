@@ -241,7 +241,8 @@ cavis), part number to get (starting at 1), and output directory. Use the
 		}
 
 		// Download the metadata and extract the relevent files to outDir.
-		if err := rda.PartMetadata(client, catID, partPrefix, outDir); err != nil {
+		rpcs, err := rda.PartMetadata(client, catID, partPrefix, outDir)
+		if err != nil {
 			return err
 		}
 
@@ -278,7 +279,7 @@ cavis), part number to get (starting at 1), and output directory. Use the
 		}
 
 		// Build VRT struct and write it to disk.
-		vrt, err := rda.NewVRT(md, tiles)
+		vrt, err := rda.NewVRT(md, tiles, rpcs)
 		if err != nil {
 			return err
 		}

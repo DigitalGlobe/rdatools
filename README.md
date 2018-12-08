@@ -14,6 +14,8 @@ To install `rda`, navigate to releases page [here](https://github.com/DigitalGlo
 
 In general, `rda --help` is your guide, and note that `--help` works for all subcommands as well.  You can find what version of `rda` you're running via `rda --version`.
 
+You can also use the `--debug` flag for any of the commands.  When provided, the tool will log to stderr information on the http requests and responses being made.  If you encounter a bug, you may try this option to try to get a better idea of what is happening and if the issue is in the cli or with RDA.
+
 Some of the commands return JSON responses; formatting JSON is easy by piping the output of the command to `jq` or `python -m json.tool`.  For instance, `rda operator DigitalGlobeStrip1B | jq` yields nicely formatted JSON describing that operator.
 
 ### `rda configure`
@@ -71,6 +73,80 @@ The actual tiles are stored in a directory named `103001000EBC3C00` adjacent to 
 rda dgstrip batch 103001000EBC3C00 --gsd 0.000146 --dra --bands RGB --bandtype PS --crs EPSG:4326 --projwin -116.79,37.86,-116.70,37.78
 ```
 The output of this is a json message, that includes a field "jobId" whos values you can use as described below.
+
+### `rda dg1b`
+
+`rda dg1b` is a subcommand allowing access to DigitalGlobe 1B images.  1Bs are unrectified imagery (and hence not georeferenced) often used in algorithms that exploit the camera perspective (e.g. stereo matching) or when one wants to use a custom elevation model during orthorectification.  
+
+You can inquire about the image parts, metadata, and realize image parts from RDA with this subcommand.  Note that you cannot currently use RDA's batch materialization capabilities for ungeoreferenced imagery, so `realize` is your only option for downloading 1B imagery.
+
+#### `rda dg1b parts`
+
+`parts` returns a description of the image parts that compose a given catalog ID.  For instance, running
+```
+rda dg1b parts 5bf6f01d-ef58-450c-8a68-48a03d0cabb6-inv
+```
+returns
+```
+{
+  "pan": {
+    "numParts": 7,
+    "imageIDs": [
+      "c6cf7665-7301-471f-ac42-b21b09751609",
+      "ba5d8c21-c59b-460b-8ec5-51f022496b2e",
+      "88b17564-db75-4ea2-8657-4f342fcd3e4d",
+      "623b5008-5886-4a5f-af5e-5348553d6dfc",
+      "1663d686-1575-4ba7-ba7d-f62f11190cf9",
+      "73f48d45-0797-4c9e-b6cc-851ed2c761e2",
+      "97081da1-3d53-4754-904a-6f57388812f4"
+    ]
+  },
+  "nvir": {
+    "numParts": 7,
+    "imageIDs": [
+      "a60527cd-ffa9-4eb2-bc91-06a9880369cd",
+      "b1a614dd-3d94-42c9-af5d-cfb8f0cb3a2a",
+      "a60d8e25-7f57-45b8-b0c9-bf9f504d4b67",
+      "4767e5e8-b539-442b-afeb-e9580a3b741c",
+      "c0cb5979-63ad-4087-9f33-8cfbfebc14b0",
+      "5bb8c071-62d3-4c74-8963-a8ea914ac793",
+      "c0f16546-1e31-48e6-8378-29b712501e48"
+    ]
+  }
+}
+
+```
+which tells us that `5bf6f01d-ef58-450c-8a68-48a03d0cabb6-inv` has pan and vnir bands, each with 7 parts.  The image IDs are the unique IDs RDA uses internally to track the location of the underlying images.
+
+#### `rda dg1b metadata`
+
+Just like `rda dgstrip metadata`, this subcommand returns the RDA metadata that describes an image.  You must provide a catalog id, band (pan, vnir, swir, or cavis), and a part number (starting at 1), in that order.  For example,
+```
+rda dg1b metadata 5bf6f01d-ef58-450c-8a68-48a03d0cabb6-inv pan 3
+```
+will return information describing the size of the image, data type, and so on.
+
+#### `rda dg1b realize`
+
+Note that this command may go through more refinement as we test to see if its outputs work well with consuming applications.
+
+`realize` downloads all the tiles that compose a 1B image part, just like `rda dgstrip realize`. In addition, it will also download the original factory metadata that is associated with that image part.  It is invoked just like `metadata` above, but you provide an output directory as the last argument.  For example,
+```
+rda dg1b realize 5bf6f01d-ef58-450c-8a68-48a03d0cabb6-inv pan 3 ~/Downloads/1B/part3
+```
+populates `~/Downloads/1B/part3` with
+```
+PAN_P003.ATT
+PAN_P003.EPH
+PAN_P003.GEO
+PAN_P003.IMD
+PAN_P003.RPB
+PAN_P003.TIL
+PAN_P003.vrt
+PAN_P003.XML
+tiles/
+```
+where `PAN_P003.vrt` is a VRT stitching together all the individual tiles downloaded to the `tiles/` directory.
 
 ### `rda job`
 

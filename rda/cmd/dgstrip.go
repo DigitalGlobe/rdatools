@@ -113,7 +113,7 @@ var dgstripRealizeCmd = &cobra.Command{
 		}
 
 		// Build VRT struct and write it to disk.
-		vrt, err := rda.NewVRT(md, tiles)
+		vrt, err := rda.NewVRT(md, tiles, nil)
 		if err != nil {
 			return err
 		}
