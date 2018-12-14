@@ -275,6 +275,6 @@ func init() {
 	dgstripRealizeCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
 
 	// Local flags specific to batch requesting tiles.
-	dgstripBatchCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
-	dgstripBatchCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
+	dgstripBatchCmd.Flags().Var(&dgstripFlags.srcWin, "srcwin", "batch realize a subwindow in pixel space, specified via comma seperated integers xoff,yoff,xsize,ysize")
+	dgstripBatchCmd.Flags().Var(&dgstripFlags.projWin, "projwin", "batch realize a subwindow in projected space, specified via comma seperated floats ulx,uly,lrx,lry")
 }

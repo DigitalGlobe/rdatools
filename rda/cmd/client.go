@@ -67,7 +67,7 @@ func newClient(ctx context.Context) (*retryablehttp.Client, func() error, error)
 
 		client.ResponseLogHook = func(l retryablehttp.Logger, resp *http.Response) {
 			l.Printf("[DEBUG] RESPONSE STATUS %s", resp.Status)
-			if resp.ContentLength > 0 {
+			if resp.ContentLength != 0 {
 				b, err := ioutil.ReadAll(resp.Body)
 				resp.Body.Close()
 				if err != nil {

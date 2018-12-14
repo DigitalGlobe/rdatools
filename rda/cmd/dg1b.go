@@ -151,7 +151,7 @@ var dg1bPartsCmd = &cobra.Command{
 		summary := struct {
 			Cavis *BandSummary `json:"cavis,omitempty"`
 			Pan   *BandSummary `json:"pan,omitempty"`
-			NVIR  *BandSummary `json:"nvir,omitempty"`
+			VNIR  *BandSummary `json:"vnir,omitempty"`
 			SWIR  *BandSummary `json:"swir,omitempty"`
 		}{}
 		for _, bandType := range []struct {
@@ -160,7 +160,7 @@ var dg1bPartsCmd = &cobra.Command{
 		}{
 			{&summary.Cavis, parts.CavisImages},
 			{&summary.Pan, parts.PanImages},
-			{&summary.NVIR, parts.VNIRImages},
+			{&summary.VNIR, parts.VNIRImages},
 			{&summary.SWIR, parts.SWIRImages},
 		} {
 			if len(bandType.parts) == 0 {
@@ -212,7 +212,7 @@ cavis), part number to get (starting at 1), and output directory. Use the
 		bandName = strings.ToLower(bandName)
 		outDir := args[3]
 
-		// Go find the rda image id associated with this part, buildng the metadata prefix while we're at it.
+		// Go find the rda image id associated with this part, building the metadata prefix while we're at it.
 		parts, err := rda.PartSummary(client, catID)
 		if err != nil {
 			return err

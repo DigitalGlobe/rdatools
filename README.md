@@ -1,6 +1,8 @@
 # rdatools
 
-A cli for accessing RDA resources.
+A cli for accessing the RDA API. 
+
+For more information on the RDA API, see the documentation [here](http://rda.geobigdata.io/docs/index.html) and [here](http://rda.geobigdata.io/docs/api.html).
 
 ## `rda`
 
@@ -14,7 +16,7 @@ To install `rda`, navigate to releases page [here](https://github.com/DigitalGlo
 
 In general, `rda --help` is your guide, and note that `--help` works for all subcommands as well.  You can find what version of `rda` you're running via `rda --version`.
 
-You can also use the `--debug` flag for any of the commands.  When provided, the tool will log to stderr information on the http requests and responses being made.  If you encounter a bug, you may try this option to try to get a better idea of what is happening and if the issue is in the cli or with RDA.
+You can also use the `--debug` flag for any of the commands.  When provided, the tool will log to stderr information on the http requests and responses being made.  If you encounter a bug, you may try this option to try to get a better idea of the HTTP requests being made and their responses and if the issue is in the cli or with RDA.
 
 Some of the commands return JSON responses; formatting JSON is easy by piping the output of the command to `jq` or `python -m json.tool`.  For instance, `rda operator DigitalGlobeStrip1B | jq` yields nicely formatted JSON describing that operator.
 
@@ -39,6 +41,8 @@ Returns JSON describing all the RDA operators available.  To get information on 
 `rda stripinfo` returns JSON desribing the given catalog.  For instance, `rda stripinfo 103001000EBC3C00` will give you all the information you might want about `103001000EBC3C00`.  Remember to pipe this to a JSON formatter if you want a pretty view of it.
 
 In addition, you can provide a `--zipfile <location of zip>` (IMD files, etc) to download the original metadata that came with the imagery when provided by DG's internal factory.
+
+Currently, the way to check if a strip is available in RDA is via this command and seeing if you recieve a 404 Not Found upon request.
 
 ### `rda dgstrip`
 
@@ -101,7 +105,7 @@ returns
       "97081da1-3d53-4754-904a-6f57388812f4"
     ]
   },
-  "nvir": {
+  "vnir": {
     "numParts": 7,
     "imageIDs": [
       "a60527cd-ffa9-4eb2-bc91-06a9880369cd",
@@ -147,6 +151,160 @@ PAN_P003.XML
 tiles/
 ```
 where `PAN_P003.vrt` is a VRT stitching together all the individual tiles downloaded to the `tiles/` directory.
+
+### `rda tempate`
+
+`rda template` provides access to a more generic set of capabilities related to RDA templates.  In fact, `rda dgstrip` and `rda dg1b` are just user friendly entry points to specific RDA templates.
+
+#### `rda template describe`
+
+Given an RDA template ID, returns a description of the given RDA template.  For example
+```
+rda template describe DigitalGlobeStrip
+```
+yields
+```
+{
+  "defaultNodeId": "SmartBandSelect",
+  "edges": [
+    {
+      "id": "edge-0",
+      "index": 1,
+      "source": "DigitalGlobeStrip",
+      "destination": "UniversalDRA"
+    },
+    {
+      "id": "edge-1",
+      "index": 1,
+      "source": "UniversalDRA",
+      "destination": "SmartBandSelect"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "DigitalGlobeStrip",
+      "operator": "DigitalGlobeStrip",
+      "parameters": {
+        "CRS": "${crs:-UTM}",
+        "GSD": "${GSD}",
+        "bands": "${bands:-MS}",
+        "catId": "${catalogId}",
+        "correctionType": "${correctionType:-DN}",
+        "fallbackToTOA": "${fallbackToTOA}"
+      }
+    },
+    {
+      "id": "UniversalDRA",
+      "operator": "UniversalDRA",
+      "parameters": {
+        "draType": "${draType:-None}"
+      }
+    },
+    {
+      "id": "SmartBandSelect",
+      "operator": "SmartBandSelect",
+      "parameters": {
+        "bandSelection": "${bandSelection:-All}"
+      }
+    }
+  ]
+}
+```
+Note the `${...}` fields are RDA template parameters (if followed by `:-`, the following value indicates the default value); we will manipulate these below.
+
+#### `rda template upload`
+
+`rda template upload` uploads a json file desribing an RDA template.  We validate that the template is a DAG, and will auto select a default evaluation node (see the field `"defaultNodeId": "SmartBandSelect"` in the example template above) for you that is the furthest distance from the source nodes in the graph if not specified.  Specify `"defaultNodeId"` if you'd like control over the default node.
+
+Lets do an example.  First download an existing template to start from via
+```
+rda template describe DigitalGlobeStrip > dgstrip.json
+```
+This is the same template in the example above, and you'll notice it uses the _DigitalGlobeStrip_ operator (not to be confused with the template) as the first node in the graph.  `rda operator DigitalGlobeStrip` informs us that a parameter that isn't exposed in the template is _Resampling Kernel_.  Editing `dgstrip.json` such that the first node's parameter section reads as
+```
+"parameters": {
+  "CRS": "${crs:-UTM}",
+  "GSD": "${GSD}",
+  "bands": "${bands:-MS}",
+  "catId": "${catalogId}",
+  "correctionType": "${correctionType:-DN}",
+  "fallbackToTOA": "${fallbackToTOA}",
+  "Resampling Kernel": "INTERP_BICUBIC"
+}
+```
+and then uploading our modified template via `rda template upload dgstrip.json`, we get back
+```
+{"id":"c21bf003b5803f03b0f0358c607ab1ffa76b89a88a64d0f4a54ab9cb73470bae"}
+```
+We can see our modified template via `rda template describe c21bf003b5803f03b0f0358c607ab1ffa76b89a88a64d0f4a54ab9cb73470bae`, which now has a fancier resampling kernel.
+
+#### `rda template metadata`
+
+Just like the other `metadata` subcommands, this returns RDA metadata describing the evaluated template.  One caveat is you can change which node in the graph you want metadata from via the `--node` option.  If not provided, the default node is assumed.  You also need to populate any template parameters that are not defaulted; this is done via key/value pairs specified like `--kv "key,value"`.  For example,
+```
+rda template metadata c21bf003b5803f03b0f0358c607ab1ffa76b89a88a64d0f4a54ab9cb73470bae --kv "catalogId,1040010038952900" --kv "GSD,5.0" --kv "bandSelection,RGB"
+```
+yields
+```
+{
+  "ImageMetadata": {
+    "ImageWidth": 3363,
+    "ImageHeight": 25406,
+    "NumBands": 3,
+    "MinX": 0,
+    "MinY": 0,
+    "DataType": "UNSIGNED_SHORT",
+    "TileXSize": 256,
+    "TileYSize": 256,
+    "NumXTiles": 14,
+    "NumYTiles": 100,
+    "MinTileX": 0,
+    "MinTileY": 0,
+    "MaxTileX": 13,
+    "MaxTileY": 99,
+    "AcquisitionDate": "2018-02-28T13:35:08.858Z",
+    "ImageID": "b3bca8fd-cf46-4b3c-a6e5-8801ec13de3f",
+    "TileBucketName": "rda-images-1"
+  },
+  "ImageGeoreferencing": {
+    "SpatialReferenceSystemCode": "EPSG:32723",
+    "TranslateX": 333540.0423765521,
+    "ScaleX": 5,
+    "ShearX": 0,
+    "TranslateY": 7458901.487530498,
+    "ShearY": 0,
+    "ScaleY": -5
+  }
+}
+```
+
+#### `rda template realize`
+
+`rda template realize` is very similar to `rda dgstrip realize`, but you provide a template id and template parameters to populate via `--kv` as in `rda template metadata`.  `--node` is also supported to evaluate a node other than the default in the graph.  `--srcwin` and `--projwin` are also supported with the caveat that `--projwin` only makes sense to use with nodes that provided georeferenced outputs.  You can use `--maxconcurrency` to increase the number of concurrent tile downloads.
+
+Let's see what the output is like between the _DigitalGlobeStrip_ template, which uses bilinear resampling, compared with our new template that used a cubic kernel.  
+
+Bilinear output can be generated like so:
+```
+rda template realize DigitalGlobeStrip --kv "catalogId,1040010038952900" --kv "bandSelection,RGB" --kv "bands,PanSharp" --kv "draType,HistogramDRA" --kv "correctionType,ACOMP" --projwin 339830.435,7391058.064,341126.283,7389710.445 bilinear.vrt
+```
+
+Cubic output is realized via:
+```
+rda template realize c21bf003b5803f03b0f0358c607ab1ffa76b89a88a64d0f4a54ab9cb73470bae --kv "catalogId,1040010038952900" --kv "bandSelection,RGB" --kv "bands,PanSharp" --kv "draType,HistogramDRA" --kv "correctionType,ACOMP" --projwin 339830.435,7391058.064,341126.283,7389710.445 ~/Downloads/cubic.vrt
+```
+
+You should see that the cubic output is sharper.
+
+Note the only change is the template ID in these calls.  Also note that `rda dgstrip realize` is just a nicer way of expressing the same API calls to RDA for the first example.
+
+#### `rda template batch`
+
+`rda template batch` uses RDA's batch materialization to generate tiles for you, just like `rda dgstrip batch`.  The arguments are the same as for `realize` above, except that RDA batch mode only supports georeferenced outputs, meaning you cannot batch materialize something like a DG 1B.  Here's an example of how to use it:
+```
+rda template batch c21bf003b5803f03b0f0358c607ab1ffa76b89a88a64d0f4a54ab9cb73470bae --kv "catalogId,1040010038952900" --kv "bandSelection,RGB" --kv "bands,PanSharp" --kv "draType,HistogramDRA" --kv "correctionType,ACOMP" --projwin 339830.435,7391058.064,341126.283,7389710.445
+```
+Use `rda job` and its subcommands to check on the job id and download its outputs.
 
 ### `rda job`
 
