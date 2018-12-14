@@ -323,12 +323,12 @@ var templateBatchCmd = &cobra.Command{
 		}
 
 		// mapping to RDA tiles.
-		if (dgstripFlags.projWin != projectionWindow{} || dgstripFlags.srcWin != sourceWindow{}) {
+		if (templateFlags.projWin != projectionWindow{} || templateFlags.srcWin != sourceWindow{}) {
 			md, err := template.Metadata()
 			if err != nil {
 				return err
 			}
-			tileWindow, err := processSubWindows(&dgstripFlags.srcWin, &dgstripFlags.projWin, md)
+			tileWindow, err := processSubWindows(&templateFlags.srcWin, &templateFlags.projWin, md)
 			if err != nil {
 				return err
 			}
