@@ -152,7 +152,7 @@ tiles/
 ```
 where `PAN_P003.vrt` is a VRT stitching together all the individual tiles downloaded to the `tiles/` directory.
 
-### `rda tempate`
+### `rda template`
 
 `rda template` provides access to a more generic set of capabilities related to RDA templates.  In fact, `rda dgstrip` and `rda dg1b` are just user friendly entry points to specific RDA templates.
 
