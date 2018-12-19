@@ -298,7 +298,9 @@ var watchCmd = &cobra.Command{
 					bar.FinishPrint("Failed downloading all artifacts; rerun the command to pick up where you left off.")
 					srcErr := errors.Cause(err)
 					if aerr, ok := srcErr.(awserr.Error); ok {
-						srcErr = aerr.OrigErr()
+						if origErr := aerr.OrigErr(); origErr != nil {
+							srcErr = origErr
+						}
 					}
 					if srcErr.Error() != "context canceled" {
 						return err
