@@ -291,6 +291,10 @@ cavis), part number to get (starting at 1), and output directory. Use the
 		}
 		defer f.Close()
 
+		if err := vrt.MakeRelative(filepath.Dir(vrtPath)); err != nil {
+			return err
+		}
+
 		enc := xml.NewEncoder(f)
 		enc.Indent("  ", "    ")
 		if err := enc.Encode(vrt); err != nil {

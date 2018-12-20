@@ -23,6 +23,7 @@ package rda
 import (
 	"encoding/xml"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -36,6 +37,24 @@ type VRTDataset struct {
 	GeoTransform *GeoTransform   `xml:",omitempty"`
 	Bands        []VRTRasterBand `xml:"VRTRasterBand"`
 	Metadata     *VRTMetadata    `xml:",omitempty"`
+}
+
+// MakeRelative convers all the paths in the VRT into relative ones;
+// this enables a user to copy the vrt with the directory to other
+// locations.
+func (vrt *VRTDataset) MakeRelative(base string) error {
+	for _, b := range vrt.Bands {
+		for i, s := range b.SimpleSource {
+			s.SourceFilename.RelativeToVRT = true
+			fp, err := filepath.Rel(base, s.SourceFilename.Filename)
+			if err != nil {
+				return errors.Wrap(err, "failed converting VRT paths into relative ones")
+			}
+			s.SourceFilename.Filename = fp
+			b.SimpleSource[i] = s
+		}
+	}
+	return nil
 }
 
 type VRTMetadata struct {
@@ -207,8 +226,12 @@ func NewVRT(m *Metadata, tiles []TileInfo, md Metadatar) (*VRTDataset, error) {
 			Band:     b + 1,
 		}
 		for _, tile := range tiles {
+			fp, err := filepath.Abs(tile.FilePath)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed building absolute file path in VRT")
+			}
 			ss := SimpleSource{
-				SourceFilename:   SourceFilename{Filename: tile.FilePath, Shared: false, RelativeToVRT: true},
+				SourceFilename:   SourceFilename{Filename: fp, Shared: false, RelativeToVRT: false},
 				SourceBand:       b + 1,
 				SourceProperties: srcProps,
 				SrcRect:          srcRect,

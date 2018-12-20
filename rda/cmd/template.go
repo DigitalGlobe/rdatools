@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -266,6 +267,10 @@ var templateRealizeCmd = &cobra.Command{
 			return errors.Wrap(err, "failed creating VRT for downloaded tiles")
 		}
 		defer f.Close()
+
+		if err := vrt.MakeRelative(filepath.Dir(vrtPath)); err != nil {
+			return err
+		}
 
 		enc := xml.NewEncoder(f)
 		enc.Indent("  ", "    ")
