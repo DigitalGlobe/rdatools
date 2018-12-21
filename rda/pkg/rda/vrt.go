@@ -43,6 +43,10 @@ type VRTDataset struct {
 // this enables a user to copy the vrt with the directory to other
 // locations.
 func (vrt *VRTDataset) MakeRelative(base string) error {
+	base, err := filepath.Abs(base)
+	if err != nil {
+		return errors.Wrap(err, "base path in VRT cannot be made absolute, can't make VRT relative to it")
+	}
 	for _, b := range vrt.Bands {
 		for i, s := range b.SimpleSource {
 			s.SourceFilename.RelativeToVRT = true
