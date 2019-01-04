@@ -29,6 +29,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -40,19 +41,6 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
-
-// AWS Access key ID
-
-// AWS Secret Access Key
-
-// AWS Session Token
-
-type awsInformation struct {
-	SecretAccessKey string `json:"S3_secret_key"`
-	AccessKeyID     string `json:"S3_access_key"`
-	SessionToken    string `json:"S3_session_token"`
-	CustomerDataLocation
-}
 
 // CustomerDataLocation holds the AWS bucket and prefix of where your GBDX data is stored.
 type CustomerDataLocation struct {
@@ -67,35 +55,68 @@ func (c CustomerDataLocation) String() string {
 	return fmt.Sprintf("s3://%s/%s", c.Bucket, c.Prefix)
 }
 
-func (a *awsInformation) credentials() *credentials.Credentials {
-	return credentials.NewStaticCredentials(a.AccessKeyID, a.SecretAccessKey, a.SessionToken)
+// Provider implements the aws/credentials.Provider interface.
+type Provider struct {
+	client *retryablehttp.Client
+
+	credentials.Expiry
+	Value
+	CustomerDataLocation
+}
+
+// Value is a aws/credentials.Value but with struct tags added to deal with GBDX.
+type Value struct {
+	AccessKeyID     string `json:"S3_access_key"`
+	SecretAccessKey string `json:"S3_secret_key"`
+	SessionToken    string `json:"S3_session_token"`
+	ProviderName    string
+}
+
+// NewProvider returns a configured Provider for getting AWS credentials from GBDX.
+func NewProvider(client *retryablehttp.Client) (*Provider, error) {
+	p := &Provider{
+		client: client,
+		Value:  Value{ProviderName: "GBDX"},
+	}
+	_, err := p.Retrieve()
+	return p, err
+}
+
+// Retrieve returns AWS credentials to use from GBDX.
+func (g *Provider) Retrieve() (credentials.Value, error) {
+	res, err := g.client.Get(s3CredentialsEndpoint)
+	if err != nil {
+		return credentials.Value(g.Value), errors.Wrapf(err, "failure requesting %s", s3CredentialsEndpoint)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return credentials.Value(g.Value), errors.Errorf("failed getting AWS access info from %s, HTTP Status: %s", s3CredentialsEndpoint, res.Status)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(g); err != nil {
+		return credentials.Value(g.Value), errors.Wrap(err, "failed unmarshaling response from GBDX for getting AWS temporary credentials")
+	}
+
+	g.SetExpiration(time.Now().Add(1*time.Hour), 5*time.Minute)
+
+	return credentials.Value(g.Value), nil
 }
 
 // NewAWSSession returns a aws session.Session configured with GBDX
 // credentials for accessing your customer data bucket/location.
 func NewAWSSession(client *retryablehttp.Client) (*session.Session, *CustomerDataLocation, error) {
-	res, err := client.Get(s3CredentialsEndpoint)
+	provider, err := NewProvider(client)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failure requesting %s", s3CredentialsEndpoint)
+		return nil, nil, err
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, nil, errors.Errorf("failed getting AWS access info from %s, HTTP Status: %s", s3CredentialsEndpoint, res.Status)
-	}
-
-	awsInfo := awsInformation{}
-	if err := json.NewDecoder(res.Body).Decode(&awsInfo); err != nil {
-		return nil, nil, errors.Wrap(err, "failed unmarshaling response from GBDX for getting AWS temporary credentials")
-	}
-
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
-		Credentials: awsInfo.credentials(),
+		Credentials: credentials.NewCredentials(provider),
 	})
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed constructing AWS session from GBDX provided AWS credentials")
 	}
-	return sess, &awsInfo.CustomerDataLocation, nil
+	return sess, &provider.CustomerDataLocation, nil
 }
 
 // S3Accessor handles access to your GBDX S3 locations.
@@ -137,12 +158,14 @@ func WithProgressFunc(progressFunc func() int) S3AccessorOption {
 // RDABatchJobPrefixes returns all the RDA job ids that appear in your
 // GBDX customer data bucket under the "rda" prefix.
 func (a *S3Accessor) RDABatchJobPrefixes(ctx context.Context) ([]string, error) {
-	jobIDs := []string{}
-	if err := a.svc.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
+	in := s3.ListObjectsV2Input{
 		Bucket:    &a.dataLoc.Bucket,
 		Prefix:    aws.String(strings.Join([]string{a.dataLoc.Prefix, "rda/"}, "/")),
 		Delimiter: aws.String("/"),
-	}, func(p *s3.ListObjectsV2Output, lastPage bool) bool {
+	}
+
+	jobIDs := []string{}
+	if err := a.svc.ListObjectsV2PagesWithContext(ctx, &in, func(p *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, o := range p.CommonPrefixes {
 			keys := strings.Split(aws.StringValue(o.Prefix), "/")
 			if len(keys) < 2 {
@@ -152,7 +175,7 @@ func (a *S3Accessor) RDABatchJobPrefixes(ctx context.Context) ([]string, error) 
 		}
 		return true
 	}); err != nil {
-		return nil, errors.Wrap(err, "failed listing RDA job ids from S3 location")
+		return nil, errors.Wrapf(err, "failed listing RDA job ids from S3 location s3://%s/%s", *in.Bucket, *in.Prefix)
 	}
 
 	return jobIDs, nil

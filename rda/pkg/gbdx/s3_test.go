@@ -32,6 +32,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -39,6 +40,50 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 )
+
+func TestProvider(t *testing.T) {
+	resp := `{
+  "S3_secret_key": "secret-key",
+  "prefix": "prefix",
+  "bucket": "bucket",
+  "S3_access_key": "access-key",
+  "S3_session_token": "session-token"
+}`
+	vExp := credentials.Value{
+		SecretAccessKey: "secret-key",
+		AccessKeyID:     "access-key",
+		SessionToken:    "session-token",
+		ProviderName:    "GBDX",
+	}
+	cdExp := CustomerDataLocation{
+		Bucket: "bucket",
+		Prefix: "prefix",
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, resp)
+	}))
+	defer ts.Close()
+	s3CredentialsEndpoint = ts.URL
+
+	client := retryablehttp.NewClient()
+
+	provider, err := NewProvider(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := provider.Retrieve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != vExp {
+		t.Fatal("credentials.Value not what was expected")
+	}
+	if provider.CustomerDataLocation != cdExp {
+		t.Fatal("CustomerDataLocation not as expected for the provider")
+	}
+}
 
 func TestNewAWSSession(t *testing.T) {
 	resp := `{
@@ -49,10 +94,13 @@ func TestNewAWSSession(t *testing.T) {
   "S3_session_token": "session-token"
 }`
 
-	exp := awsInformation{
-		SecretAccessKey: "secret-key",
-		AccessKeyID:     "access-key",
-		SessionToken:    "session-token",
+	exp := struct {
+		Value
+		CustomerDataLocation
+	}{
+		Value: Value{SecretAccessKey: "secret-key",
+			AccessKeyID:  "access-key",
+			SessionToken: "session-token"},
 		CustomerDataLocation: CustomerDataLocation{
 			Bucket: "bucket",
 			Prefix: "prefix",
@@ -71,15 +119,17 @@ func TestNewAWSSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if *loc != exp.CustomerDataLocation {
-		t.Fatalf("S3 location %+v != %+v", loc, exp.CustomerDataLocation)
-	}
-	if aws.StringValue(sess.Config.Region) != "us-east-1" {
-		t.Fatal("us-east-1 is not the region set for the AWS session")
-	}
+	// Creds must be fetched in order for the provider to be invoked.
 	sessCreds, err := sess.Config.Credentials.Get()
 	if err != nil {
 		t.Fatalf("error getting session creds, err: %+v", err)
+	}
+
+	if *loc != exp.CustomerDataLocation {
+		t.Fatalf("S3 location %#v != %#v", loc, exp.CustomerDataLocation)
+	}
+	if aws.StringValue(sess.Config.Region) != "us-east-1" {
+		t.Fatal("us-east-1 is not the region set for the AWS session")
 	}
 	if sessCreds.AccessKeyID != exp.AccessKeyID || sessCreds.SecretAccessKey != exp.SecretAccessKey || sessCreds.SessionToken != exp.SessionToken {
 		t.Fatalf("session credentials not set as expected")
@@ -190,25 +240,3 @@ func TestDownloadBatchJobArtifacts(t *testing.T) {
 		t.Fatalf("expected 4 objects written to disk, but got %d", len(files))
 	}
 }
-
-// func TestRDADeleteBatchJobArtifacts(t *testing.T) {
-// 	m := mockS3{
-// 		listFunc: func(_ aws.Context, _ *s3.ListObjectsV2Input, f func(*s3.ListObjectsV2Output, bool) bool, _ ...request.Option) error {
-// 			f(&s3.ListObjectsV2Output{CommonPrefixes: []*s3.CommonPrefix{
-// 				&s3.CommonPrefix{Prefix: aws.String("prefix/rda/4840c2f2-b978-4f7c-81a0-dc2988ca4b15/")},
-// 				&s3.CommonPrefix{Prefix: aws.String("prefix/rda/5e14dff5-dcce-4009-a4c7-9a96e8cdaf3a/")},
-// 			}}, true)
-// 			return nil
-// 		},
-// 		delObjects: func(ctx aws.Context, in *s3.DeleteObjectsInput, opts ...request.Option) (*s3.DeleteObjectsOutput, error) {
-
-// 		},
-// 	}
-
-// 	accessor := S3Accessor{
-// 		dataLoc: CustomerDataLocation{},
-// 		svc:     m,
-// 	}
-
-// 	jobIDs, err := accessor.TestRDADeleteBatchJobArtifacts(context.Background(),
-// }
