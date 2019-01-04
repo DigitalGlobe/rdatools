@@ -275,15 +275,15 @@ var watchCmd = &cobra.Command{
 			}
 		}()
 
+		accessor, err := gbdx.NewS3Accessor(client)
+		if err != nil {
+			return err
+		}
+
 		// Begin watching the job and downloading granules as they appear.
 		status := "processing"
 	dlLoop:
 		for {
-			accessor, err := gbdx.NewS3Accessor(client)
-			if err != nil {
-				return err
-			}
-
 			numDL, dlFunc, err := accessor.DownloadBatchJobArtifacts(ctx, outDir, jobID)
 			if err != nil {
 				return err

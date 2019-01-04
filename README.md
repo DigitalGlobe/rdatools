@@ -12,6 +12,8 @@ The `rda` command line tool is a Go based executable for accessing RDA functiona
 
 To install `rda`, navigate to releases page [here](https://github.com/DigitalGlobe/rdatools/releases)  and download the most recent package for your operating system (note that Darwin is Max OSX).  Unpack your download and you will find a binary executable named `rda`.  Place this in your path so that you can access it from the command line wherever you're at, or run it directly from where you downloaded it.
 
+If you want to build it yourself, make sure you have Go available on your system (see [here](https://golang.org/doc/install)) and run `go get -u github.com/DigitalGlobe/rdatools/rda`. This should clone the repository and install the `rda` tool in your Go path (by default `$HOME/go/bin` on linux/osx).
+
 ## Using `rda`
 
 In general, `rda --help` is your guide, and note that `--help` works for all subcommands as well.  You can find what version of `rda` you're running via `rda --version`.
