@@ -159,10 +159,12 @@ multiple values.`,
 			if len(s) != 2 {
 				return errors.Errorf("--kv = %q is not of the form \"key,value\"", kv)
 			}
-			params = append(params, rda.AddParameter(strings.TrimSpace(s[0]), strings.TrimSpace(s[1])))
+			// V2 of they're api forces this change...
+			// params = append(params, rda.AddParameter(strings.TrimSpace(s[0]), strings.TrimSpace(s[1])))
+			params = append(params, rda.AddParameter("p", fmt.Sprintf("%s=%s", strings.TrimSpace(s[0]), strings.TrimSpace(s[1]))))
 		}
 		if templateFlags.nodeID != "" {
-			params = append(params, rda.AddParameter("nodeId", templateFlags.nodeID))
+			params = append(params, rda.AddParameter("nodeid", templateFlags.nodeID))
 		}
 
 		// Get the metadata.
@@ -215,10 +217,11 @@ var templateRealizeCmd = &cobra.Command{
 			if len(s) != 2 {
 				return errors.Errorf("--kv = %q is not of the form \"key,value\"", kv)
 			}
-			params = append(params, rda.AddParameter(strings.TrimSpace(s[0]), strings.TrimSpace(s[1])))
+			//params = append(params, rda.AddParameter(strings.TrimSpace(s[0]), strings.TrimSpace(s[1])))
+			params = append(params, rda.AddParameter("p", fmt.Sprintf("%s=%s", strings.TrimSpace(s[0]), strings.TrimSpace(s[1]))))
 		}
 		if templateFlags.nodeID != "" {
-			params = append(params, rda.AddParameter("nodeId", templateFlags.nodeID))
+			params = append(params, rda.AddParameter("nodeid", templateFlags.nodeID))
 		}
 
 		// Get the metadata and figure out what RDA tiles need to be downloaded.
@@ -309,10 +312,11 @@ var templateBatchCmd = &cobra.Command{
 			if len(s) != 2 {
 				return errors.Errorf("--kv = %q is not of the form \"key,value\"", kv)
 			}
-			params = append(params, rda.AddParameter(strings.TrimSpace(s[0]), strings.TrimSpace(s[1])))
+			//params = append(params, rda.AddParameter(strings.TrimSpace(s[0]), strings.TrimSpace(s[1])))
+			params = append(params, rda.AddParameter("p", fmt.Sprintf("%s=%s", strings.TrimSpace(s[0]), strings.TrimSpace(s[1]))))
 		}
 		if templateFlags.nodeID != "" {
-			params = append(params, rda.AddParameter("nodeId", templateFlags.nodeID))
+			params = append(params, rda.AddParameter("nodeid", templateFlags.nodeID))
 		}
 
 		// Get the metadata and figure out what RDA tiles need to be downloaded.

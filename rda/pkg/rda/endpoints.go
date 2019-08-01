@@ -35,7 +35,10 @@ import (
 var urls endpoints
 
 func init() {
-	urls = newEndpoints("https://rda.geobigdata.io/v1")
+	//urls = newEndpoints("https://rda.geobigdata.io/v1")
+	//urls = newEndpoints("https://idahoapitest.geobigdata.io/v1") // dev domain.
+	//urls = newEndpoints("https://rda-dev.geobigdata.io/v1") // dev domain.
+	urls = newEndpoints("https://rda-api-v2-alpha-c.geobigdata.io/v2") // dev domain.
 }
 
 type endpoints struct {

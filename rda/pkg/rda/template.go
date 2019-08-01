@@ -322,6 +322,7 @@ func (t *Template) processJob(ctx context.Context, job realizeJob, jobsOut chan<
 		job.err = errors.Wrapf(err, "failed forming request for tile at %s", job.url)
 		return
 	}
+	req.Header.Set("Accept", "image/tiff")
 	req = req.WithContext(ctx)
 
 	res, err := t.client.Do(req)
