@@ -1,0 +1,6 @@
+data_classification:
+  - company_proprietary
+
+poc:
+  - name: Patrick Young
+    email: Patrick.Young@maxar.com
